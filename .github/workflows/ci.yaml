@@ -17,8 +17,11 @@ concurrency:
 
 jobs:
   test:
-    name: Test & Lint
+    name: Test & Lint (${{ matrix.package }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [server, client]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,12 +30,16 @@ jobs:
         with:
           enable-cache: true
       - name: Format check
+        working-directory: packages/${{ matrix.package }}
         run: uv run --extra dev ruff format --check .
       - name: Lint
+        working-directory: packages/${{ matrix.package }}
         run: uv run --extra dev ruff check .
       - name: Type check
+        working-directory: packages/${{ matrix.package }}
         run: uv run --extra dev mypy src
       - name: Test
+        working-directory: packages/${{ matrix.package }}
         run: uv run --extra dev pytest
 
   build:

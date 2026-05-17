@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-contained-trust-server"
+version = "0.0.1"
+description = "TrustServer base class for ai-contained secret brokers"
+requires-python = ">=3.12"
+dependencies = [
+    "pynacl>=1.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=1.0",
+    "pytest-describe>=3.1",
+    "assertpy>=1.1",
+    "ruff>=0.15.12",
+    "mypy>=1.20.2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "focus: run only focused tests (use with -m focus)",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "D"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ai_contained"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+mypy_path = "src"
+explicit_package_bases = true
+strict = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_contained"]
