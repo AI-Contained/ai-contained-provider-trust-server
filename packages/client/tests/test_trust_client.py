@@ -58,6 +58,20 @@ def describe_TrustClient() -> None:
             client.register()
             return client
 
+        def it_sets_authorization_header(
+            trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch
+        ) -> None:
+            captured: dict = {}
+
+            async def _handler(request: Request) -> Response:
+                captured["headers"] = dict(request.headers)
+                return JSONResponse(expected)
+
+            monkeypatch.setattr(_self, "secret_handler", _handler)
+            result = trust_client.post_raw("/test/secret", {})
+            assert_that(result).is_equal_to(expected_bytes)
+            assert_that(captured["headers"].get("authorization")).starts_with('Signature keyId="Ed25519",signature="')
+
         def it_decrypted_bytes_by_default(trust_client: TrustClient) -> None:
             result = trust_client.post_raw("/test/secret", {})
             assert_that(result).is_equal_to(expected_bytes)
