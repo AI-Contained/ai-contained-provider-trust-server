@@ -1,5 +1,7 @@
 """TrustClient — performs key exchange with a trust server daemon."""
 
+import json
+
 import httpx
 import nacl.public
 import nacl.signing
@@ -51,13 +53,42 @@ class TrustClient:
         raise RuntimeError("unreachable")
 
     def post_raw(self, path: str, payload: dict) -> bytes:
+        body = json.dumps(payload).encode()
         # 1. Sign request body with self._signing_key
+        signature = self._signing_key.sign(body).signature
+
         # 2. POST payload with Authorization: Signature keyId="Ed25519",signature="<hex>"
-        # 3. Raise httpx.HTTPStatusError on non-200
-        # 4. Decrypt response body if X-Trust-Secret: encrypt, or http-200 and X-Trust-Secret absent
+        response = self._http.post(
+            path,
+            content=body,
+            headers={
+                "content-type": "application/json",
+                "authorization": f'Signature keyId="Ed25519",signature="{signature.hex()}"',
+            },
+        )
+
+        # 3. Decrypt response body if X-Trust-Secret: encrypt, or http-200 and X-Trust-Secret absent
+        x_trust = response.headers.get("x-trust-secret")
+        should_decrypt = x_trust == "encrypt" or (x_trust is None and response.status_code == 200)
+
+        content = response.content
+        if should_decrypt:
+            content = nacl.public.SealedBox(self._private_key).decrypt(content)
+
+        # 4. Raise httpx.HTTPStatusError on non-200
+        if response.status_code != 200:
+            raise httpx.HTTPStatusError(
+                f"{response.status_code}",
+                request=response.request,
+                response=httpx.Response(
+                    status_code=response.status_code,
+                    content=content,
+                    request=response.request,
+                ),
+            )
+
         # 5. Return plaintext bytes
-        raise NotImplementedError
+        return content
 
     def post(self, path: str, payload: dict) -> dict:
-        # Calls post_raw() and json.loads() the result
-        raise NotImplementedError
+        return json.loads(self.post_raw(path, payload))
