@@ -4,12 +4,12 @@ import os
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass
 class RoleSet:
-    """Immutable set of allowed and denied roles for a client."""
+    """Mutable set of allowed and denied roles for a client."""
 
-    allowed: frozenset[str]  # explicit roles, or {"*"} for wildcard
-    denied: frozenset[str]   # explicitly blocked roles
+    allowed: set[str]  # explicit roles, or {"*"} for wildcard
+    denied: set[str]   # explicitly blocked roles
 
     def permits(self, role: str) -> bool:
         """Return True if role is allowed and not denied."""
@@ -30,12 +30,25 @@ class TrustConfig:
         """Parse a comma-separated role=hostname string into {hostname: RoleSet}.
 
         - "" or "none" → {}
-        - "shell-provider" (no "=") → {"shell-provider": RoleSet({"*"}, {})}
-        - "shell=shell-provider" → {"shell-provider": RoleSet({"shell"}, {})}
-        - "shell=none" → {"none": RoleSet({}, {"shell"})}
+        - "client-hostname" (no "=") → {"client-hostname": RoleSet({"*"}, set())}
+        - "shell=client-hostname" → {"client-hostname": RoleSet({"shell"}, set())}
         - multiple roles for same hostname are merged into one RoleSet
         """
-        raise NotImplementedError
+        if not raw or raw == "none":
+            return {}
+        result: dict[str, RoleSet] = {}
+        for token in raw.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if "=" in token:
+                role, hostname = token.split("=", 1)
+            else:
+                role, hostname = "*", token
+            if hostname not in result:
+                result[hostname] = RoleSet(set(), set())
+            result[hostname].allowed.add(role)
+        return result
 
     def __init__(self, trust_clients: str) -> None:
         self._permitted: dict[str, RoleSet] = self._parse(trust_clients)
