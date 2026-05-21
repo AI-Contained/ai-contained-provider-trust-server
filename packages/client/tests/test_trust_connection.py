@@ -8,9 +8,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.testclient import TestClient
 
-import test_trust_client as _self
+import test_trust_connection as _self
 from ai_contained.trust import server as trust_server
-from ai_contained.trust.client import TrustConnection
+from ai_contained.trust.client.trust_connection import TrustConnection
 
 
 # Delegate for secret_endpoint - monkeypatched per test to control the response.
