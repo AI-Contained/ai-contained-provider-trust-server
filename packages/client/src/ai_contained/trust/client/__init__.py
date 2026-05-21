@@ -1,4 +1,4 @@
-"""TrustClient — performs key exchange with a trust server daemon."""
+"""TrustConnection — performs key exchange with a trust server daemon."""
 
 import json
 
@@ -7,7 +7,7 @@ import nacl.public
 import nacl.signing
 
 
-class TrustClient:
+class TrustConnection:
     """Generates ephemeral keypairs and registers with a trust server.
 
     Keypairs are generated once at instantiation and held in memory only —

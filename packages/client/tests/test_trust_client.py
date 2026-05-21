@@ -10,7 +10,7 @@ from starlette.testclient import TestClient
 
 import test_trust_client as _self
 from ai_contained.trust import server as trust_server
-from ai_contained.trust.client import TrustClient
+from ai_contained.trust.client import TrustConnection
 
 
 # Delegate for secret_endpoint - monkeypatched per test to control the response.
@@ -30,16 +30,16 @@ def mcp() -> FastMCP:
     return server
 
 
-def describe_TrustClient() -> None:
+def describe_TrustConnection() -> None:
     @pytest.fixture
-    def trust_client(http: TestClient) -> TrustClient:
-        return TrustClient(http)  # TestClient is a subclass of httpx.Client
+    def trust_client(http: TestClient) -> TrustConnection:
+        return TrustConnection(http)  # TestClient is a subclass of httpx.Client
 
     def describe_register() -> None:
-        def it_returns_true_on_success(trust_client: TrustClient) -> None:
+        def it_returns_true_on_success(trust_client: TrustConnection) -> None:
             assert_that(trust_client.register()).is_true()
 
-        def it_fails_when_already_registered(trust_client: TrustClient) -> None:
+        def it_fails_when_already_registered(trust_client: TrustConnection) -> None:
             assert_that(trust_client.register()).is_true()
             assert_that(trust_client.register()).is_false()
 
@@ -47,17 +47,17 @@ def describe_TrustClient() -> None:
         expected = {"value": "supersecret"}
 
         @pytest.fixture
-        def trust_client(http: TestClient, monkeypatch: pytest.MonkeyPatch) -> TrustClient:
+        def trust_client(http: TestClient, monkeypatch: pytest.MonkeyPatch) -> TrustConnection:
             async def _handler(request: Request) -> Response:
                 return JSONResponse(expected)
 
             monkeypatch.setattr(_self, "secret_handler", _handler)
-            client = TrustClient(http)
+            client = TrustConnection(http)
             client.register()
             return client
 
         def it_raises_on_unregistered_client(http: TestClient) -> None:
-            client = TrustClient(http)  # not registered
+            client = TrustConnection(http)  # not registered
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
                 client.post_raw("/test/secret", {})
             assert_that(exc_info.value.response.status_code).is_equal_to(401)
@@ -65,7 +65,7 @@ def describe_TrustClient() -> None:
         @pytest.mark.parametrize("status_code", [401])
         @pytest.mark.parametrize("x_trust_secret", ["encrypt", "plaintext"])
         def it_raises_on_non_200(
-            trust_client: TrustClient,
+            trust_client: TrustConnection,
             monkeypatch: pytest.MonkeyPatch,
             status_code: int,
             x_trust_secret: str,
@@ -82,7 +82,7 @@ def describe_TrustClient() -> None:
         def describe_post() -> None:
             @pytest.mark.parametrize("x_trust_secret", ["encrypt", "plaintext"])
             def it_decrypts_json(
-                trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch, x_trust_secret: str
+                trust_client: TrustConnection, monkeypatch: pytest.MonkeyPatch, x_trust_secret: str
             ) -> None:
                 async def _handler(request: Request) -> Response:
                     return JSONResponse(expected, headers={"X-Trust-Secret": x_trust_secret})
@@ -92,7 +92,7 @@ def describe_TrustClient() -> None:
                 assert_that(result).is_equal_to(expected)
 
             def it_raises_on_non_json_response(
-                trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch
+                trust_client: TrustConnection, monkeypatch: pytest.MonkeyPatch
             ) -> None:
                 async def _handler(request: Request) -> Response:
                     return Response(content=b"not json", headers={"X-Trust-Secret": "plaintext"})
@@ -102,7 +102,7 @@ def describe_TrustClient() -> None:
                     trust_client.post("/test/secret", {})
 
             def it_sets_authorization_header(
-                trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch
+                trust_client: TrustConnection, monkeypatch: pytest.MonkeyPatch
             ) -> None:
                 captured: dict = {}
 
@@ -119,7 +119,7 @@ def describe_TrustClient() -> None:
         # we need to be able to make raw http connections (to fake our malformed requests)
         @pytest.fixture
         def registered_http(http: TestClient) -> TestClient:
-            TrustClient(http).register()
+            TrustConnection(http).register()
             return http
 
         def it_returns_401_when_authorization_header_is_missing(registered_http: TestClient) -> None:
@@ -162,7 +162,7 @@ def describe_TrustClient() -> None:
 
             # TestClient created after route registration so the route is visible
             http = TestClient(mcp.http_app(), client=("127.0.0.1", 50000))
-            client = TrustClient(http)
+            client = TrustConnection(http)
             client.register()
 
             # "shell" role cannot access the "test" route
@@ -181,13 +181,13 @@ def describe_TrustClient() -> None:
             async def _handler(request: Request) -> Response:
                 return JSONResponse(expected)
             monkeypatch.setattr(_self, "secret_handler", _handler)
-            client = TrustClient(http)
+            client = TrustConnection(http)
             client.register()
             assert_that(client.post("/test/secret", {})).is_equal_to(expected)
 
         def it_returns_403_when_role_is_not_permitted(http: TestClient) -> None:
             trust_server.get_trust_config().reset("aws=127.0.0.1")  # only aws role — test not permitted
-            client = TrustClient(http)
+            client = TrustConnection(http)
             client.register()
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
                 client.post("/test/secret", {})
