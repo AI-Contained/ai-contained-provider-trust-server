@@ -5,6 +5,12 @@ import os
 from ai_contained.trust.client.trust_client import TrustClient
 
 
+class DuplicateSourceError(ValueError):
+    def __init__(self, role: str) -> None:
+        display = "wildcard" if role == "*" else f"role {role!r}"
+        super().__init__(f"duplicate {display} in TRUST_SERVERS")
+
+
 class TrustConfig:
     """Parsed registry from TRUST_SERVERS — maps role to TrustClient.
 
@@ -28,11 +34,15 @@ class TrustConfig:
             token = token.strip()
             if not token:
                 continue
-            if "=" in token:
-                role, url = token.split("=", 1)
-                result[role] = url if url else None
+            elif "=" in token:
+                role, raw_url = token.split("=", 1)
+                url: str | None = raw_url if raw_url else None
             else:
-                result["*"] = token
+                role, url = "*", token
+
+            if role in result:
+                raise DuplicateSourceError(role)
+            result[role] = url
         return result
 
     def __init__(self, trust_servers: str) -> None:

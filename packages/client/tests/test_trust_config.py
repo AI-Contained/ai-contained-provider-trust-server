@@ -35,3 +35,13 @@ def describe_TrustConfig() -> None:
             assert_that(trust_client.TrustConfig._parse("http://server:8080,aws=")).is_equal_to(
                 {"*": "http://server:8080", "aws": None}
             )
+
+        def it_raises_on_duplicate_role() -> None:
+            assert_that(trust_client.TrustConfig._parse).raises(trust_client.DuplicateSourceError).when_called_with(
+                "aws=http://foo.com:8080,aws=http://bar.com:8080"
+            )
+
+        def it_raises_on_duplicate_wildcard() -> None:
+            assert_that(trust_client.TrustConfig._parse).raises(trust_client.DuplicateSourceError).when_called_with(
+                "http://foo.com:8080,http://foo.com:8081"
+            )
