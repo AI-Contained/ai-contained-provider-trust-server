@@ -63,12 +63,11 @@ class TrustConfig:
         self._permitted = self._parse(trust_clients)
 
     def is_hostname_permitted(self, hostname: str) -> bool:
-        """Return True if hostname appears in the allowlist."""
-        raise NotImplementedError
+        return hostname in self._permitted
 
     def is_role_permitted(self, hostname: str, role: str) -> bool:
-        """Return True if hostname is permitted and granted the given role."""
-        raise NotImplementedError
+        role_set = self._permitted.get(hostname, None)
+        return role_set is not None and role_set.permits(role)
 
 
 _instance: TrustConfig | None = None
