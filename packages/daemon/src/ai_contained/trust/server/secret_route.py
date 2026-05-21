@@ -20,6 +20,7 @@ def secret_route(
     mcp: FastMCP,
     path: str,
     methods: list[str],
+    role: str,
 ) -> Callable[[Handler], Handler]:
     def decorator(fn: Handler) -> Handler:
 
@@ -32,7 +33,11 @@ def secret_route(
             if client is None:
                 return JSONResponse({"code": "UNREGISTERED"}, status_code=401)
 
-            # 2. Parse Authorization: Signature keyId="Ed25519",signature="<hex>"
+            # 2. Check role before verifying signature — cheap fast-fail
+            if not client.roles.permits(role):
+                return JSONResponse({"code": "FORBIDDEN"}, status_code=403)
+
+            # 3. Parse Authorization: Signature keyId="Ed25519",signature="<hex>"
             match = _AUTH_RE.match(request.headers.get("authorization", ""))
             if not match:
                 return JSONResponse({"code": "INVALID_AUTHORIZATION"}, status_code=401)
@@ -41,7 +46,7 @@ def secret_route(
             except ValueError:
                 return JSONResponse({"code": "INVALID_AUTHORIZATION"}, status_code=401)
 
-            # 3. Verify Ed25519 signature over request body — 401 if invalid
+            # 4. Verify Ed25519 signature over request body — 401 if invalid
             try:
                 body = await request.body()
                 nacl.signing.VerifyKey(bytes.fromhex(client.signing_public_key)).verify(body, signature)

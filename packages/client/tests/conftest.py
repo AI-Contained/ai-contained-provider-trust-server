@@ -2,6 +2,7 @@ import pytest
 from fastmcp import FastMCP
 from starlette.testclient import TestClient
 
+from ai_contained.trust import server as trust_server
 from ai_contained.trust.server import register
 from ai_contained.trust.server.trust_store import get_trust_store
 
@@ -9,6 +10,7 @@ from ai_contained.trust.server.trust_store import get_trust_store
 @pytest.fixture(autouse=True)
 def reset_trust_store() -> None:
     get_trust_store().reset()
+    trust_server.get_trust_config().reset("127.0.0.1")  # allow test client IP with wildcard roles
 
 
 @pytest.fixture

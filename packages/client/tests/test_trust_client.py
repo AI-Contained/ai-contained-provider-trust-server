@@ -9,8 +9,8 @@ from starlette.responses import JSONResponse, Response
 from starlette.testclient import TestClient
 
 import test_trust_client as _self
+from ai_contained.trust import server as trust_server
 from ai_contained.trust.client import TrustClient
-from ai_contained.trust.server import register
 from ai_contained.trust.server.secret_route import secret_route
 
 
@@ -22,9 +22,9 @@ async def secret_handler(request: Request) -> Response:
 @pytest.fixture
 def mcp() -> FastMCP:
     server = FastMCP("test")
-    register(server)
+    trust_server.register(server)
 
-    @secret_route(server, "/test/secret", methods=["POST"])
+    @secret_route(server, "/test/secret", methods=["POST"], role="test")
     async def secret_endpoint(request: Request) -> Response:
         return await secret_handler(request)
 
@@ -151,3 +151,24 @@ def describe_TrustClient() -> None:
             )
             assert_that(response.status_code).is_equal_to(401)
             assert_that(response.json()).is_equal_to({"code": "INVALID_AUTHORIZATION"})
+
+    def describe_role_enforcement() -> None:
+        def it_allows_request_when_role_is_permitted(
+            http: TestClient, monkeypatch: pytest.MonkeyPatch
+        ) -> None:
+            trust_server.get_trust_config().reset("test=127.0.0.1")  # explicit test role
+            async def _handler(request: Request) -> Response:
+                return JSONResponse({"ok": True})
+            monkeypatch.setattr(_self, "secret_handler", _handler)
+            client = TrustClient(http)
+            client.register()
+            assert_that(client.post("/test/secret", {})).is_equal_to({"ok": True})
+
+        def it_returns_403_when_role_is_not_permitted(http: TestClient) -> None:
+            trust_server.get_trust_config().reset("aws=127.0.0.1")  # only aws role — test not permitted
+            client = TrustClient(http)
+            client.register()
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                client.post("/test/secret", {})
+            assert_that(exc_info.value.response.status_code).is_equal_to(403)
+            assert_that(exc_info.value.response.json()).is_equal_to({"code": "FORBIDDEN"})
