@@ -23,7 +23,7 @@ def mcp() -> FastMCP:
     server = FastMCP("test")
     trust_server.register(server)
 
-    @trust_server.secret_route(server, "/test/secret", methods=["POST"], role="test")
+    @trust_server.secret_route(server, role="test")
     async def secret_endpoint(request: Request) -> Response:
         return await secret_handler(request)
 
@@ -152,16 +152,38 @@ def describe_TrustClient() -> None:
             assert_that(response.json()).is_equal_to({"code": "INVALID_AUTHORIZATION"})
 
     def describe_role_enforcement() -> None:
+        def it_can_register_at_custom_path(mcp: FastMCP) -> None:
+            expected = {"ok": True}
+            trust_server.get_trust_config().reset("shell=127.0.0.1")
+
+            @trust_server.secret_route(mcp, role="shell", path="/custom/path")
+            async def shell_endpoint(request: Request) -> Response:
+                return JSONResponse(expected)
+
+            # TestClient created after route registration so the route is visible
+            http = TestClient(mcp.http_app(), client=("127.0.0.1", 50000))
+            client = TrustClient(http)
+            client.register()
+
+            # "shell" role cannot access the "test" route
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                client.post("/test/secret", {})
+            assert_that(exc_info.value.response.status_code).is_equal_to(403)
+
+            # custom path with matching role succeeds
+            assert_that(client.post("/custom/path", {})).is_equal_to(expected)
+
         def it_allows_request_when_role_is_permitted(
             http: TestClient, monkeypatch: pytest.MonkeyPatch
         ) -> None:
+            expected = {"ok": True}
             trust_server.get_trust_config().reset("test=127.0.0.1")  # explicit test role
             async def _handler(request: Request) -> Response:
-                return JSONResponse({"ok": True})
+                return JSONResponse(expected)
             monkeypatch.setattr(_self, "secret_handler", _handler)
             client = TrustClient(http)
             client.register()
-            assert_that(client.post("/test/secret", {})).is_equal_to({"ok": True})
+            assert_that(client.post("/test/secret", {})).is_equal_to(expected)
 
         def it_returns_403_when_role_is_not_permitted(http: TestClient) -> None:
             trust_server.get_trust_config().reset("aws=127.0.0.1")  # only aws role — test not permitted

@@ -18,13 +18,14 @@ _AUTH_RE = re.compile(r'^Signature keyId="Ed25519",signature="([0-9a-f]+)"$')
 
 def secret_route(
     mcp: FastMCP,
-    path: str,
-    methods: list[str],
     role: str,
+    path: str | None = None,
 ) -> Callable[[Handler], Handler]:
+    resolved_path = path if path is not None else f"/{role}/secret"
+
     def decorator(fn: Handler) -> Handler:
 
-        @mcp.custom_route(path, methods=methods)
+        @mcp.custom_route(resolved_path, methods=["POST"])
         async def handler(request: Request) -> Response:
             store = get_trust_store()
             # 1. Look up client by IP — 401 if unregistered
