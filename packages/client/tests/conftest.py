@@ -11,7 +11,7 @@ from ai_contained.trust.server.trust_store import get_trust_store
 def reset_trust_store() -> None:
     get_trust_store().reset()
     trust_server.get_trust_config().reset("127.0.0.1")  # allow test client IP with wildcard roles
-    trust_client.init_trust_config("127.0.0.1")  # reset client singleton to known state
+
 
 
 @pytest.fixture

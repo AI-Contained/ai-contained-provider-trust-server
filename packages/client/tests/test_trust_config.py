@@ -4,7 +4,13 @@ from assertpy import assert_that
 from starlette.testclient import TestClient
 
 from ai_contained.trust import client as trust_client
+from ai_contained.trust.client.trust_config import reset_trust_config
 from ai_contained.trust.client.trust_connection import TrustConnection
+
+
+@pytest.fixture(autouse=True)
+def _reset_trust_config() -> None:
+    reset_trust_config()
 
 
 def describe_TrustConfig() -> None:
@@ -51,7 +57,6 @@ def describe_TrustConfig() -> None:
             )
 
     def describe_get_client() -> None:
-        @pytest.mark.skip(reason="conftest always initializes the singleton via init_trust_config — true uninitialized state cannot be tested in this suite")
         def it_is_uninitialized_by_default() -> None:
             assert_that(trust_client.get_trust_config()).is_none()
 

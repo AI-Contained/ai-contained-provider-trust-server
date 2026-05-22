@@ -100,12 +100,11 @@ class TrustConfig:
         return result
 
     def __init__(self, trust_servers: str, factory: HttpClientFactory) -> None:
-        self._clients: dict[str, TrustClient | None] = {}
-        #raise NotImplementedError
+        self._clients = _register_clients(self._parse(trust_servers), factory)
 
     def get_client(self, role: str) -> TrustClient | None:
-        """Return the TrustClient for a role, or None if not configured."""
-        raise NotImplementedError
+        """Return the TrustClient for a role — falls back to wildcard '*' if role not explicitly configured."""
+        return self._clients.get(role, self._clients.get("*", None))
 
 
 _instance: TrustConfig | None = None
@@ -123,3 +122,9 @@ def init_trust_config(raw: str, factory: HttpClientFactory = _default_http_clien
         _instance = None
     _instance = TrustConfig(raw, factory)
     return _instance
+
+
+def reset_trust_config() -> None:
+    """Reset the singleton to None. Not part of the public API — intended for test teardown."""
+    global _instance
+    _instance = None
