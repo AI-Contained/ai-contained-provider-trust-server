@@ -1,11 +1,14 @@
 """TrustConfig — builds and holds TrustClient instances parsed from TRUST_SERVERS."""
 
+import logging
 import time
 from collections.abc import Callable
 
 import httpx
+from fastmcp.utilities.logging import get_logger
 
 _sleep = time.sleep  # exposed for monkeypatching in tests
+_log: logging.Logger = get_logger("trust.client")
 
 from ai_contained.trust.client.trust_client import TrustClient
 from ai_contained.trust.client.trust_connection import TrustConnection
@@ -28,7 +31,39 @@ def _register_clients(
     factory: HttpClientFactory,
     max_retries: int = 5,
 ) -> dict[str, TrustClient | None]:
-    raise NotImplementedError
+    by_url: dict[str, TrustConnection] = {}
+    clients: dict[str, TrustClient | None] = {}
+
+    for role, url in parsed.items():
+        if url is None:
+            _log.info("role %r: explicitly denied", role)
+            clients[role] = None
+            continue
+
+        parsed_url = httpx.URL(url)
+        key = f"{parsed_url.host}:{parsed_url.port}"
+
+        if key not in by_url:
+            _log.info("connecting to %s", key)
+            conn = TrustConnection(factory(parsed_url))
+            for attempt in range(1, max_retries + 1):
+                try:
+                    conn.register()
+                    _log.info("registered with %s", key)
+                    break
+                except httpx.ConnectError as e:
+                    if attempt == max_retries:
+                        _log.error("failed to connect to %s after %d attempts: %s", key, max_retries, e)
+                        raise
+                    delay = 2 ** (attempt - 1)
+                    _log.warning("attempt %d/%d failed for %s, retrying in %ds", attempt, max_retries, key, delay)
+                    _sleep(delay)
+            by_url[key] = conn
+
+        path = parsed_url.path or f"/{role}/secret"
+        clients[role] = TrustClient(_connection=by_url[key], _path=path)
+
+    return clients
 
 
 class TrustConfig:
