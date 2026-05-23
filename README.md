@@ -14,7 +14,7 @@ Client process                          Daemon process
    └─ POST /trust/register ──────────────────────────────────►
                                          reverse-DNS lookup
                                          check against TRUST_CLIENTS
-                                         store keys keyed by IP + roles
+                                         store client's public keys, keyed by IP + roles
                               ◄──────────── 200 OK ──────────
 
 2. client.post(payload)
@@ -49,12 +49,12 @@ Client process                          Daemon process
 
 | Value | Meaning |
 |---|---|
-| `""` or `"none"` | Deny all registrations |
-| `my-provider` | Allow `my-provider` to access any role |
-| `shell=my-provider` | Allow `my-provider` to access the `shell` role only |
-| `shell=my-provider,aws=my-provider` | Allow `my-provider` to access `shell` and `aws` |
+| `""` | Deny all registrations |
+| `provider-hostname` | Allow `provider-hostname` to access any role |
+| `shell=provider-hostname` | Allow `provider-hostname` to access the `shell` role only |
+| `shell=provider-hostname,aws=provider-hostname` | Allow `provider-hostname` to access `shell` and `aws` |
 | `shell=provider-a,aws=provider-b` | Different roles from different hosts |
-| `!aws=my-provider` | Explicitly deny `my-provider` from the `aws` role |
+| `!aws=provider-hostname` | Explicitly deny `provider-hostname` from the `aws` role |
 
 The hostname is matched against the client IP's reverse-DNS result (hostname, aliases, and the raw IP are all checked).
 
@@ -97,9 +97,9 @@ async def shell_secret(request: Request) -> Response: ...
 | Value | Meaning |
 |---|---|
 | `""` | No trust servers |
-| `http://daemon:8080` | One server handles all roles (wildcard) |
-| `shell=http://daemon:8080` | This server handles the `shell` role |
-| `shell=http://daemon-a:8080,aws=http://daemon-b:8080` | Different roles via different servers |
+| `http://trust-server:8080` | One server handles all roles (wildcard) |
+| `shell=http://trust-server:8080` | This server handles the `shell` role |
+| `shell=http://trust-server-a:8080,aws=http://trust-server-b:8080` | Different roles via different servers |
 | `aws=` | Explicitly deny the `aws` role (no server) |
 
 Multiple roles pointing at the same host share a single connection and registration.
