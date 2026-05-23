@@ -5,6 +5,7 @@ The server stores them keyed by client IP, enforcing one registration per IP.
 A second attempt from the same IP is rejected with HTTP 401.
 """
 
+import asyncio
 import json
 import socket
 from ipaddress import ip_address
@@ -17,13 +18,14 @@ from ai_contained.trust.server.trust_config import get_trust_config
 from ai_contained.trust.server.trust_store import RegisteredClient, get_trust_store
 
 
-def _reverse_dns(ip: str) -> list[str]:
+async def _reverse_dns(ip: str) -> list[str]:
     """Return all names for an IP: primary hostname, aliases, and the IP itself.
 
     Always including the IP allows TRUST_CLIENTS to use hostnames or IP addresses interchangeably.
     """
+    loop = asyncio.get_running_loop()
     try:
-        hostname, aliases, _ = socket.gethostbyaddr(ip)
+        hostname, aliases, _ = await loop.run_in_executor(None, socket.gethostbyaddr, ip)
         return [hostname] + aliases + [ip]
     except socket.herror:
         return [ip]
@@ -44,7 +46,7 @@ def register(mcp: FastMCP) -> None:
 
         # Reverse DNS lookup — check all names (hostname, aliases, IP) against TrustConfig
         config = get_trust_config()
-        names = _reverse_dns(str(client_ip))
+        names = await _reverse_dns(str(client_ip))
         matches = [n for n in names if config.is_hostname_permitted(n)]
         if len(matches) == 0:
             return JSONResponse({"code": "FORBIDDEN"}, status_code=401)
