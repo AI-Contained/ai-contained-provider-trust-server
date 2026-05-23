@@ -72,6 +72,7 @@ def describe_POST_trust_register() -> None:
 
     async def it_rejects_ambiguous_trust_config(http: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
         import ai_contained.trust.server.trust_register as trust_register
+
         monkeypatch.setattr(trust_register, "_reverse_dns", lambda ip: ["hostname-a", "hostname-b"])
         trust_server.get_trust_config().reset("hostname-a,hostname-b")
         payload = {"signing_public_key": "ab" * 32, "encryption_public_key": "cd" * 32}
@@ -79,4 +80,3 @@ def describe_POST_trust_register() -> None:
         assert_that(response.status_code).is_equal_to(500)
         assert_that(response.json()["code"]).is_equal_to("AMBIGUOUS_CONFIG")
         assert_that(response.json()["detail"]).contains("hostname-a").contains("hostname-b")
-

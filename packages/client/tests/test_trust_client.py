@@ -95,9 +95,7 @@ def describe_TrustClient() -> None:
                 with pytest.raises(json.JSONDecodeError):
                     await trust_client.post({})
 
-            async def it_sets_authorization_header(
-                trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch
-            ) -> None:
+            async def it_sets_authorization_header(trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch) -> None:
                 expected = {"value": "supersecret"}
                 captured: dict = {}
 

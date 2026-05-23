@@ -18,14 +18,10 @@ def describe_TrustConfig() -> None:
             assert_that(trust_client.TrustConfig._parse("")).is_empty()
 
         def it_maps_bare_url_to_wildcard() -> None:
-            assert_that(trust_client.TrustConfig._parse("http://server:8080")).is_equal_to(
-                {"*": "http://server:8080"}
-            )
+            assert_that(trust_client.TrustConfig._parse("http://server:8080")).is_equal_to({"*": "http://server:8080"})
 
         def it_maps_role_to_url() -> None:
-            assert_that(trust_client.TrustConfig._parse("aws=http://aws:8080")).is_equal_to(
-                {"aws": "http://aws:8080"}
-            )
+            assert_that(trust_client.TrustConfig._parse("aws=http://aws:8080")).is_equal_to({"aws": "http://aws:8080"})
 
         def it_maps_multiple_roles() -> None:
             assert_that(trust_client.TrustConfig._parse("aws=http://aws:8080,github=http://github:8080")).is_equal_to(
@@ -80,6 +76,7 @@ def describe_TrustConfig() -> None:
             )
             config = trust_client.get_trust_config()
             assert_that(config.get_client("aws")._connection).is_same_as(config.get_client("shell")._connection)
+
 
 def describe_register_clients() -> None:
     from ai_contained.trust.client.trust_config import _register_clients
