@@ -56,16 +56,18 @@ class TrustConnection:
     async def post_raw(self, path: str, payload: dict[str, Any]) -> bytes:
         """Sign and POST payload, decrypt and return the response body."""
         body = json.dumps(payload).encode()
-        # 1. Sign request body with self._signing_key
-        signature = self._signing_key.sign(body).signature
+        created_ts = str(int(_now()))
 
-        # 2. POST payload with Authorization: Signature keyId="Ed25519",signature="<hex>"
+        # 1. Sign created_ts + "\n" + body — binds the timestamp to the payload
+        signature = self._signing_key.sign(f"{created_ts}\n".encode() + body).signature
+
+        # 2. POST payload with Authorization: Signature keyId="Ed25519",created_ts="<unix_s>",signature="<hex>"
         response = await self._http.post(
             path,
             content=body,
             headers={
                 "content-type": "application/json",
-                "authorization": f'Signature keyId="Ed25519",signature="{signature.hex()}"',
+                "authorization": f'Signature keyId="Ed25519",created_ts="{created_ts}",signature="{signature.hex()}"',
             },
         )
 

@@ -1,6 +1,7 @@
 """secret_route — decorator that registers a signed, encrypted secret endpoint."""
 
 import re
+import time
 from collections.abc import Awaitable, Callable
 from ipaddress import ip_address
 
@@ -15,13 +16,16 @@ from ai_contained.trust.server.trust_store import get_trust_store
 
 Handler = Callable[[Request], Awaitable[Response]]
 
-_AUTH_RE = re.compile(r'^Signature keyId="Ed25519",signature="([0-9a-f]+)"$')
+_now = time.time
+
+_AUTH_RE = re.compile(r'^Signature keyId="Ed25519",created_ts="(\d+)",signature="([0-9a-f]+)"$')
 
 
 def secret_route(
     mcp: FastMCP,
     role: str,
     path: str | None = None,
+    max_age_seconds: int = 30,
 ) -> Callable[[Handler], Handler]:
     """Register a custom MCP route that enforces trust authentication and encrypts responses."""
     resolved_path = path if path is not None else f"/{role}/secret"
@@ -43,19 +47,25 @@ def secret_route(
             if not client.roles.permits(role):
                 return JSONResponse({"code": "FORBIDDEN"}, status_code=403)
 
-            # 3. Parse Authorization: Signature keyId="Ed25519",signature="<hex>"
+            # 3. Parse Authorization: Signature keyId="Ed25519",created_ts="<unix_s>",signature="<hex>"
             match = _AUTH_RE.match(request.headers.get("authorization", ""))
             if not match:
                 return JSONResponse({"code": "INVALID_AUTHORIZATION"}, status_code=401)
             try:
-                signature = bytes.fromhex(match.group(1))
+                created_ts = int(match.group(1))
+                signature = bytes.fromhex(match.group(2))
             except ValueError:
                 return JSONResponse({"code": "INVALID_AUTHORIZATION"}, status_code=401)
 
-            # 4. Verify Ed25519 signature over request body — 401 if invalid
+            # 3a. Reject requests outside the allowed time window
+            if abs(_now() - created_ts) > max_age_seconds:
+                return JSONResponse({"code": "REQUEST_EXPIRED"}, status_code=401)
+
+            # 4. Verify Ed25519 signature over created_ts + "\n" + body — 401 if invalid
             try:
                 body = await request.body()
-                nacl.signing.VerifyKey(bytes.fromhex(client.signing_public_key)).verify(body, signature)
+                verify_key = nacl.signing.VerifyKey(bytes.fromhex(client.signing_public_key))
+                verify_key.verify(f"{created_ts}\n".encode() + body, signature)
             except (nacl.exceptions.BadSignatureError, ValueError):
                 return JSONResponse({"code": "INVALID_SIGNATURE"}, status_code=401)
 

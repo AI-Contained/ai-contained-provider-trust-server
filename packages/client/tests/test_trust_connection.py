@@ -1,5 +1,7 @@
 import time
 
+import time
+
 import httpx
 import pytest
 from assertpy import assert_that
@@ -73,12 +75,13 @@ def describe_TrustConnection() -> None:
             assert_that(response.json()).is_equal_to({"code": "INVALID_AUTHORIZATION"})
 
         async def it_returns_401_when_signature_is_invalid(registered_http: httpx.AsyncClient) -> None:
+            created_ts = int(time.time())
             response = await registered_http.post(
                 "/test/secret",
                 content=b"{}",
                 headers={
                     "content-type": "application/json",
-                    "authorization": f'Signature keyId="Ed25519",signature="{"ab" * 32}"',
+                    "authorization": f'Signature keyId="Ed25519",created_ts="{created_ts}",signature="{"ab" * 32}"',
                 },
             )
             assert_that(response.status_code).is_equal_to(401)
