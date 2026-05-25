@@ -10,10 +10,10 @@ from ai_contained.provider.template import register
 
 
 @pytest.fixture
-def mcp() -> FastMCP:
+async def mcp() -> FastMCP:
     """Create a FastMCP server with the template provider registered."""
     server = FastMCP("test")
-    register(server)
+    await register(server)
     return server
 
 

@@ -5,7 +5,7 @@ from typing import cast
 from fastmcp import Context, FastMCP
 
 
-def register(mcp: FastMCP) -> None:
+async def register(mcp: FastMCP) -> None:
     """Register tools, resources and prompts with the MCP server."""
     scenes = {
         "forest": "🌲 You're in a dark forest. Paths lead left and right.",
@@ -61,7 +61,7 @@ def register(mcp: FastMCP) -> None:
     # The prompt is registered and accessible via the MCP protocol directly.
 
     @mcp.prompt()
-    def adventure_recap() -> str:
+    async def adventure_recap() -> str:
         """Generate a recap based on the player's stats."""
         return (
             "Read adventure://stats then write a short dramatic recap of the player's journey. "

@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-contained-provider-template"  # TODO: rename to ai-contained-provider-<yourprovider>
-version = "0.0.2"
+version = "0.2.0"
 description = "Hello World adventure game provider for AI-Contained"  # TODO: update
 requires-python = ">=3.12"
 dependencies = [
-    "ai-contained-core-mcp @ https://github.com/AI-Contained/ai-contained-base/archive/refs/tags/v0.2.0.zip#subdirectory=packages/core-mcp",
+    "ai-contained-core-mcp @ https://github.com/AI-Contained/ai-contained-base/archive/refs/tags/v0.3.0.zip#subdirectory=packages/core-mcp",
 ]
 
 [project.optional-dependencies]
