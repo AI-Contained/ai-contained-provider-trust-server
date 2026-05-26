@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-contained-provider-trust-server-client"
-version = "0.1.0"
+version = "1.0.1"
 description = "TrustConnection low-level crypto HTTP client for ai-contained"
 requires-python = ">=3.12"
 dependencies = [
