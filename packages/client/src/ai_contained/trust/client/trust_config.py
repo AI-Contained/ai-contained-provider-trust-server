@@ -66,7 +66,7 @@ async def _register_clients(
                     await _sleep(delay)
             by_url[key] = conn
 
-        path = parsed_url.path or f"/{role}/secret"
+        path = f"/{role}/secret" if parsed_url.path == "/" else parsed_url.path
         clients[role] = TrustClient(_connection=by_url[key], _path=path)
 
     return clients
