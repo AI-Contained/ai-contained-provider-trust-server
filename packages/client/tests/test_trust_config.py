@@ -107,6 +107,18 @@ def describe_register_clients() -> None:
         result = await _register_clients(parsed, lambda url: http, max_retries=3)
         assert_that(result["aws"]).is_instance_of(trust_client.TrustClient)
 
+    @pytest.mark.parametrize("base_url", ["http://127.0.0.1:8080", "http://127.0.0.1:8080/"])
+    async def it_derives_path_from_role_when_url_has_no_path(http: httpx.AsyncClient, base_url: str) -> None:
+        parsed = {"aws": base_url}
+        result = await _register_clients(parsed, lambda url: http)
+        assert_that(result["aws"]._path).is_equal_to("/aws/secret")
+
+    async def it_uses_explicit_path_when_url_specifies_one(http: httpx.AsyncClient) -> None:
+        expected = "/custom/path"
+        parsed = {"aws": f"http://127.0.0.1:8080{expected}"}
+        result = await _register_clients(parsed, lambda url: http)
+        assert_that(result["aws"]._path).is_equal_to(expected)
+
     async def it_raises_after_max_retries(http: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
         async def always_fail(self: TrustConnection) -> bool:
             raise httpx.ConnectError("connection refused")
