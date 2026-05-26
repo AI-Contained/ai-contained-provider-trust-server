@@ -31,7 +31,7 @@ async def _reverse_dns(ip: str) -> list[str]:
         return [ip]
 
 
-def register(mcp: FastMCP) -> None:
+async def register(mcp: FastMCP) -> None:
     """Register the /trust/register endpoint with the MCP server."""
     store = get_trust_store()
 

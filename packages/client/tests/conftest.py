@@ -15,9 +15,9 @@ def reset_trust_store() -> None:
 
 
 @pytest.fixture
-def mcp() -> FastMCP:
+async def mcp() -> FastMCP:
     server = FastMCP("test")
-    trust_server.register(server)
+    await trust_server.register(server)
     return server
 
 

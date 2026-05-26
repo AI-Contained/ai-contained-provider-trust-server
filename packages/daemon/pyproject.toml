@@ -9,7 +9,7 @@ description = "TrustServer base class for ai-contained secret brokers"
 requires-python = ">=3.12"
 dependencies = [
     "pynacl>=1.5",
-    "fastmcp>=3.2.4,<3.3",
+    "ai-contained-core-mcp @ https://github.com/AI-Contained/ai-contained-base/archive/refs/tags/v0.3.1.zip#subdirectory=packages/core-mcp",
     "starlette>=1.0.1",
 ]
 
@@ -50,6 +50,9 @@ quote-style = "double"
 mypy_path = "src"
 explicit_package_bases = true
 strict = true
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ai_contained"]
