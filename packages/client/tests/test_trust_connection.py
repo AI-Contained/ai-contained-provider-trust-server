@@ -21,9 +21,9 @@ class SecretEndpointHandler:
 
 
 @pytest.fixture
-def mcp() -> FastMCP:
+async def mcp() -> FastMCP:
     server = FastMCP("test")
-    trust_server.register(server)
+    await trust_server.register(server)
 
     @trust_server.secret_route(server, role="test")
     async def secret_endpoint(request: Request) -> Response:

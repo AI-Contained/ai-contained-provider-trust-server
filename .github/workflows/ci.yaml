@@ -23,7 +23,7 @@ jobs:
       matrix:
         package: [daemon, client]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.ref }}
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v6
@@ -49,7 +49,7 @@ jobs:
     permissions:
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.ref }}
       - name: Verify HEAD
@@ -60,20 +60,20 @@ jobs:
             echo "Stale re-run: ${{ github.sha }} is no longer HEAD of ${{ github.ref }} ($remote_sha)"
             exit 1
           fi
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         if: github.ref != 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=ref,event=branch,prefix=branch-
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         with:
           platforms: linux/amd64,linux/arm64
           push: ${{ github.ref != 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
@@ -90,23 +90,23 @@ jobs:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: cycjimmy/semantic-release-action@v4
+      - uses: cycjimmy/semantic-release-action@v6
         id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: steps.semantic.outputs.new_release_published == 'true'
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         if: steps.semantic.outputs.new_release_published == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         if: steps.semantic.outputs.new_release_published == 'true'
         id: meta
         with:
@@ -117,7 +117,7 @@ jobs:
             type=semver,pattern={{major}},value=${{ steps.semantic.outputs.new_release_version }}
             type=raw,value=latest
       # Shares the GHA cache populated by the build job, so this is effectively free
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         if: steps.semantic.outputs.new_release_published == 'true'
         with:
           platforms: linux/amd64,linux/arm64
