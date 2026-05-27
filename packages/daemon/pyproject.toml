@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-contained-provider-trust-server-daemon"
-version = "1.0.1"
+version = "1.0.2"
 description = "TrustServer base class for ai-contained secret brokers"
 requires-python = ">=3.12"
 dependencies = [
@@ -50,6 +50,9 @@ quote-style = "double"
 mypy_path = "src"
 explicit_package_bases = true
 strict = true
+
+[project.entry-points."ai_contained.provider"]
+trust_server = "ai_contained.trust.server:load_provider"
 
 [tool.hatch.metadata]
 allow-direct-references = true
