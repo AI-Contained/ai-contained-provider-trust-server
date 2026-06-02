@@ -52,7 +52,7 @@ def describe_TrustClient() -> None:
             conn = TrustConnection(http)  # not registered
             client = TrustClient(_connection=conn, _path="/test/secret")
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
-                await client.post_raw({})
+                await client.post_raw(b"{}")
             assert_that(exc_info.value.response.status_code).is_equal_to(401)
 
         @pytest.mark.parametrize("status_code", [401])
@@ -68,9 +68,23 @@ def describe_TrustClient() -> None:
 
             monkeypatch.setattr(SecretEndpointHandler, "handle", _handler)
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
-                await trust_client.post_raw({})
+                await trust_client.post_raw(b"{}")
             assert_that(exc_info.value.response.status_code).is_equal_to(status_code)
             assert_that(exc_info.value.response.json()).is_equal_to(expected)
+
+        async def it_forwards_raw_bytes_as_body(
+            trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch
+        ) -> None:
+            expected = b"not-json"
+            captured: dict = {}
+
+            async def _handler(request: Request) -> Response:
+                captured["body"] = await request.body()
+                return Response(content=b'{"ok": true}', headers={"X-Trust-Secret": "plaintext"})
+
+            monkeypatch.setattr(SecretEndpointHandler, "handle", _handler)
+            await trust_client.post_raw(expected)
+            assert_that(captured.get("body")).is_equal_to(expected)
 
         def describe_post() -> None:
             @pytest.mark.parametrize("x_trust_secret", ["encrypt", "plaintext"])
