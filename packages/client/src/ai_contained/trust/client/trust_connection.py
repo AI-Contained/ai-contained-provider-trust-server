@@ -58,15 +58,10 @@ class TrustConnection:
         # 1. Sign created_ts + "\n" + body — binds the timestamp to the payload
         signature = self._signing_key.sign(f"{created_ts}\n".encode() + content).signature
 
-        # 2. POST payload with Authorization: Signature keyId="Ed25519",created_ts="<unix_s>",signature="<hex>"
-        response = await self._http.post(
-            path,
-            content=content,
-            headers={
-                "content-type": "application/json",
-                "authorization": f'Signature keyId="Ed25519",created_ts="{created_ts}",signature="{signature.hex()}"',
-            },
-        )
+        # 2. POST with Authorization injected — caller headers passed through, Authorization always wins
+        headers = kwargs.pop("headers", {})
+        headers["authorization"] = f'Signature keyId="Ed25519",created_ts="{created_ts}",signature="{signature.hex()}"'
+        response = await self._http.post(path, content=content, headers=headers, **kwargs)
 
         # 3. Decrypt response body if X-Trust-Secret: encrypt, or http-200 and X-Trust-Secret absent
         x_trust = response.headers.get("x-trust-secret")
