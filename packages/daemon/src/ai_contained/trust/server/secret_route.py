@@ -1,5 +1,6 @@
 """secret_route — decorator that registers a signed, encrypted secret endpoint."""
 
+import inspect
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -69,7 +70,9 @@ def secret_route(
             except (nacl.exceptions.BadSignatureError, ValueError):
                 return JSONResponse({"code": "INVALID_SIGNATURE"}, status_code=401)
 
-            response = await fn(request)
+            # Inspect at decoration time — avoids TypeError when handler expects payload arg.
+            # Payload decoding + content-type enforcement not yet implemented.
+            response = await fn(request, None) if len(inspect.signature(fn).parameters) > 1 else await fn(request)
 
             x_trust = response.headers.get("x-trust-secret")
             should_encrypt = x_trust == "encrypt" or (response.status_code == 200 and x_trust != "plaintext")
