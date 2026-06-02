@@ -72,9 +72,7 @@ def describe_TrustClient() -> None:
             assert_that(exc_info.value.response.status_code).is_equal_to(status_code)
             assert_that(exc_info.value.response.json()).is_equal_to(expected)
 
-        async def it_forwards_raw_bytes_as_body(
-            trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch
-        ) -> None:
+        async def it_forwards_raw_bytes_as_body(trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch) -> None:
             expected = b"not-json"
             captured: dict = {}
 
@@ -188,28 +186,34 @@ def describe_TrustClient() -> None:
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
                 await dict_client.post_raw(b'{"account_id": "123"}')
             assert_that(exc_info.value.response.status_code).is_equal_to(400)
-            assert_that(exc_info.value.response.json()).is_equal_to({
-                "code": "INVALID_REQUEST",
-                "detail": "content-type must be application/json",
-            })
+            assert_that(exc_info.value.response.json()).is_equal_to(
+                {
+                    "code": "INVALID_REQUEST",
+                    "detail": "content-type must be application/json",
+                }
+            )
 
         async def it_returns_400_for_wrong_content_type(dict_client: TrustClient) -> None:
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
                 await dict_client.post_raw(b'{"account_id": "123"}', headers={"content-type": "text/plain"})
             assert_that(exc_info.value.response.status_code).is_equal_to(400)
-            assert_that(exc_info.value.response.json()).is_equal_to({
-                "code": "INVALID_REQUEST",
-                "detail": "content-type must be application/json",
-            })
+            assert_that(exc_info.value.response.json()).is_equal_to(
+                {
+                    "code": "INVALID_REQUEST",
+                    "detail": "content-type must be application/json",
+                }
+            )
 
         async def it_returns_400_for_malformed_json(dict_client: TrustClient) -> None:
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
                 await dict_client.post_raw(b"not-json", headers={"content-type": "application/json"})
             assert_that(exc_info.value.response.status_code).is_equal_to(400)
-            assert_that(exc_info.value.response.json()).is_equal_to({
-                "code": "INVALID_REQUEST",
-                "detail": "request body must be valid JSON",
-            })
+            assert_that(exc_info.value.response.json()).is_equal_to(
+                {
+                    "code": "INVALID_REQUEST",
+                    "detail": "request body must be valid JSON",
+                }
+            )
 
     def describe_role_enforcement() -> None:
         async def it_can_register_at_custom_path(mcp: FastMCP) -> None:
