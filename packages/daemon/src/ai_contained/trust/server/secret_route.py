@@ -6,6 +6,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from ipaddress import ip_address
+from typing import Any, cast
 
 import nacl.exceptions
 import nacl.public
@@ -16,7 +17,9 @@ from starlette.responses import JSONResponse, Response
 
 from ai_contained.trust.server.trust_store import get_trust_store
 
-Handler = Callable[[Request], Awaitable[Response]]
+SecretCallback = Callable[[Request], Awaitable[Response]]
+SecretDictCallback = Callable[[Request, dict[str, Any]], Awaitable[Response]]
+Handler = SecretCallback | SecretDictCallback
 
 _now = time.time
 
@@ -75,14 +78,18 @@ def secret_route(
             # as payload; enforce content-type so the intent is unambiguous.
             if len(inspect.signature(fn).parameters) > 1:
                 if request.headers.get("content-type") != "application/json":
-                    return JSONResponse({"code": "INVALID_REQUEST", "detail": "content-type must be application/json"}, status_code=400)
+                    return JSONResponse(
+                        {"code": "INVALID_REQUEST", "detail": "content-type must be application/json"}, status_code=400
+                    )
                 try:
                     payload = json.loads(body)
                 except json.JSONDecodeError:
-                    return JSONResponse({"code": "INVALID_REQUEST", "detail": "request body must be valid JSON"}, status_code=400)
-                response = await fn(request, payload)
+                    return JSONResponse(
+                        {"code": "INVALID_REQUEST", "detail": "request body must be valid JSON"}, status_code=400
+                    )
+                response = await cast(SecretDictCallback, fn)(request, payload)
             else:
-                response = await fn(request)
+                response = await cast(SecretCallback, fn)(request)
 
             x_trust = response.headers.get("x-trust-secret")
             should_encrypt = x_trust == "encrypt" or (response.status_code == 200 and x_trust != "plaintext")

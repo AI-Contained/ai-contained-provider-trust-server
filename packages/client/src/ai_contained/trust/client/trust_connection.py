@@ -1,6 +1,7 @@
 """TrustConnection — low-level key exchange and signed HTTP with a trust server."""
 
 import time
+from typing import Any
 
 import httpx
 import nacl.public
@@ -51,7 +52,7 @@ class TrustConnection:
         response.raise_for_status()
         raise RuntimeError("unreachable")
 
-    async def post_raw(self, path: str, content: bytes, **kwargs) -> bytes:
+    async def post_raw(self, path: str, content: bytes, **kwargs: Any) -> bytes:
         """Sign and POST body, decrypt and return the response body."""
         created_ts = str(int(_now()))
 
