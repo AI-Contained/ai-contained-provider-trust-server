@@ -59,7 +59,7 @@ def describe_TrustConnection() -> None:
                 return Response(content=expected)
 
             monkeypatch.setattr(SecretEndpointHandler, "handle", _handler)
-            assert_that(await connection.post_raw("/test/secret", {})).is_equal_to(expected)
+            assert_that(await connection.post_raw("/test/secret", b"{}")).is_equal_to(expected)
 
     def describe_authorize_header() -> None:
         @pytest.fixture
@@ -107,13 +107,13 @@ def describe_TrustConnection() -> None:
         async def it_rejects_an_expired_timestamp(connection: TrustConnection, monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.setattr(trust_connection, "_now", lambda: time.time() - 60)
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
-                await connection.post_raw("/test/secret", {})
+                await connection.post_raw("/test/secret", b"{}")
             assert_that(exc_info.value.response.status_code).is_equal_to(401)
             assert_that(exc_info.value.response.json()).is_equal_to({"code": "REQUEST_EXPIRED"})
 
         async def it_rejects_a_future_timestamp(connection: TrustConnection, monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.setattr(trust_connection, "_now", lambda: time.time() + 60)
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
-                await connection.post_raw("/test/secret", {})
+                await connection.post_raw("/test/secret", b"{}")
             assert_that(exc_info.value.response.status_code).is_equal_to(401)
             assert_that(exc_info.value.response.json()).is_equal_to({"code": "REQUEST_EXPIRED"})

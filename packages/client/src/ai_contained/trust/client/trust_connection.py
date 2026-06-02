@@ -1,6 +1,5 @@
 """TrustConnection — low-level key exchange and signed HTTP with a trust server."""
 
-import json
 import time
 from typing import Any
 
@@ -53,23 +52,17 @@ class TrustConnection:
         response.raise_for_status()
         raise RuntimeError("unreachable")
 
-    async def post_raw(self, path: str, payload: dict[str, Any]) -> bytes:
-        """Sign and POST payload, decrypt and return the response body."""
-        body = json.dumps(payload).encode()
+    async def post_raw(self, path: str, content: bytes, **kwargs: Any) -> bytes:
+        """Sign and POST body, decrypt and return the response body."""
         created_ts = str(int(_now()))
 
         # 1. Sign created_ts + "\n" + body — binds the timestamp to the payload
-        signature = self._signing_key.sign(f"{created_ts}\n".encode() + body).signature
+        signature = self._signing_key.sign(f"{created_ts}\n".encode() + content).signature
 
-        # 2. POST payload with Authorization: Signature keyId="Ed25519",created_ts="<unix_s>",signature="<hex>"
-        response = await self._http.post(
-            path,
-            content=body,
-            headers={
-                "content-type": "application/json",
-                "authorization": f'Signature keyId="Ed25519",created_ts="{created_ts}",signature="{signature.hex()}"',
-            },
-        )
+        # 2. POST with Authorization injected — caller headers passed through, Authorization always wins
+        headers = kwargs.pop("headers", {})
+        headers["authorization"] = f'Signature keyId="Ed25519",created_ts="{created_ts}",signature="{signature.hex()}"'
+        response = await self._http.post(path, content=content, headers=headers, **kwargs)
 
         # 3. Decrypt response body if X-Trust-Secret: encrypt, or http-200 and X-Trust-Secret absent
         x_trust = response.headers.get("x-trust-secret")

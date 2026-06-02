@@ -52,7 +52,7 @@ def describe_TrustClient() -> None:
             conn = TrustConnection(http)  # not registered
             client = TrustClient(_connection=conn, _path="/test/secret")
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
-                await client.post_raw({})
+                await client.post_raw(b"{}")
             assert_that(exc_info.value.response.status_code).is_equal_to(401)
 
         @pytest.mark.parametrize("status_code", [401])
@@ -68,9 +68,34 @@ def describe_TrustClient() -> None:
 
             monkeypatch.setattr(SecretEndpointHandler, "handle", _handler)
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
-                await trust_client.post_raw({})
+                await trust_client.post_raw(b"{}")
             assert_that(exc_info.value.response.status_code).is_equal_to(status_code)
             assert_that(exc_info.value.response.json()).is_equal_to(expected)
+
+        async def it_forwards_raw_bytes_as_body(trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch) -> None:
+            expected = b"not-json"
+            captured: dict = {}
+
+            async def _handler(request: Request) -> Response:
+                captured["body"] = await request.body()
+                return Response(content=b'{"ok": true}', headers={"X-Trust-Secret": "plaintext"})
+
+            monkeypatch.setattr(SecretEndpointHandler, "handle", _handler)
+            await trust_client.post_raw(expected)
+            assert_that(captured.get("body")).is_equal_to(expected)
+
+        async def it_does_not_set_content_type_header(
+            trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch
+        ) -> None:
+            captured: dict = {}
+
+            async def _handler(request: Request) -> Response:
+                captured["headers"] = dict(request.headers)
+                return Response(content=b'{"ok": true}', headers={"X-Trust-Secret": "plaintext"})
+
+            monkeypatch.setattr(SecretEndpointHandler, "handle", _handler)
+            await trust_client.post_raw(b"{}")
+            assert_that(captured["headers"]).does_not_contain_key("content-type")
 
         def describe_post() -> None:
             @pytest.mark.parametrize("x_trust_secret", ["encrypt", "plaintext"])
@@ -95,6 +120,19 @@ def describe_TrustClient() -> None:
                 with pytest.raises(json.JSONDecodeError):
                     await trust_client.post({})
 
+            async def it_sets_content_type_application_json(
+                trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch
+            ) -> None:
+                captured: dict = {}
+
+                async def _handler(request: Request) -> Response:
+                    captured["headers"] = dict(request.headers)
+                    return JSONResponse({"ok": True})
+
+                monkeypatch.setattr(SecretEndpointHandler, "handle", _handler)
+                await trust_client.post({})
+                assert_that(captured["headers"].get("content-type")).is_equal_to("application/json")
+
             async def it_sets_authorization_header(trust_client: TrustClient, monkeypatch: pytest.MonkeyPatch) -> None:
                 expected = {"value": "supersecret"}
                 captured: dict = {}
@@ -107,6 +145,75 @@ def describe_TrustClient() -> None:
                 assert_that(await trust_client.post({})).is_equal_to(expected)
                 result = captured["headers"].get("authorization")
                 assert_that(result).matches(r'^Signature keyId="Ed25519",created_ts="\d+",signature="[0-9a-f]+"$')
+
+    def describe_payload_dispatch() -> None:
+        async def _default_dict_handler(request: Request, payload: dict) -> Response:
+            return JSONResponse({"ok": True})
+
+        class DictPayloadHandler:
+            handle = _default_dict_handler
+
+        @pytest.fixture
+        async def dict_client() -> TrustClient:
+            server = FastMCP("test")
+            await trust_server.register(server)
+
+            @trust_server.secret_route(server, role="dict-test")
+            async def dict_endpoint(request: Request, payload: dict) -> Response:
+                return await DictPayloadHandler.handle(request, payload)
+
+            transport = httpx.ASGITransport(app=server.http_app(), client=("127.0.0.1", 50000))
+            async with httpx.AsyncClient(transport=transport, base_url="http://ignored") as http:
+                conn = TrustConnection(http)
+                await conn.register()
+                yield TrustClient(_connection=conn, _path="/dict-test/secret")
+
+        async def it_passes_decoded_payload_to_handler(
+            dict_client: TrustClient, monkeypatch: pytest.MonkeyPatch
+        ) -> None:
+            expected = {"account_id": "123", "role": "ReadOnly"}
+            captured: dict = {}
+
+            async def _handler(request: Request, payload: dict) -> Response:
+                captured["payload"] = payload
+                return JSONResponse({"ok": True})
+
+            monkeypatch.setattr(DictPayloadHandler, "handle", _handler)
+            await dict_client.post(expected)
+            assert_that(captured["payload"]).is_equal_to(expected)
+
+        async def it_returns_400_for_missing_content_type(dict_client: TrustClient) -> None:
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                await dict_client.post_raw(b'{"account_id": "123"}')
+            assert_that(exc_info.value.response.status_code).is_equal_to(400)
+            assert_that(exc_info.value.response.json()).is_equal_to(
+                {
+                    "code": "INVALID_REQUEST",
+                    "detail": "content-type must be application/json",
+                }
+            )
+
+        async def it_returns_400_for_wrong_content_type(dict_client: TrustClient) -> None:
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                await dict_client.post_raw(b'{"account_id": "123"}', headers={"content-type": "text/plain"})
+            assert_that(exc_info.value.response.status_code).is_equal_to(400)
+            assert_that(exc_info.value.response.json()).is_equal_to(
+                {
+                    "code": "INVALID_REQUEST",
+                    "detail": "content-type must be application/json",
+                }
+            )
+
+        async def it_returns_400_for_malformed_json(dict_client: TrustClient) -> None:
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                await dict_client.post_raw(b"not-json", headers={"content-type": "application/json"})
+            assert_that(exc_info.value.response.status_code).is_equal_to(400)
+            assert_that(exc_info.value.response.json()).is_equal_to(
+                {
+                    "code": "INVALID_REQUEST",
+                    "detail": "request body must be valid JSON",
+                }
+            )
 
     def describe_role_enforcement() -> None:
         async def it_can_register_at_custom_path(mcp: FastMCP) -> None:

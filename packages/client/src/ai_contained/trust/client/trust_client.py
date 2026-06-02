@@ -14,10 +14,12 @@ class TrustClient:
     _connection: TrustConnection
     _path: str
 
-    async def post_raw(self, payload: dict[str, Any]) -> bytes:
-        """Sign and POST payload to the baked-in path, return raw response bytes."""
-        return await self._connection.post_raw(self._path, payload)
+    async def post_raw(self, content: bytes, **kwargs: Any) -> bytes:
+        """Sign and POST body to the baked-in path, return raw response bytes."""
+        return await self._connection.post_raw(self._path, content, **kwargs)
 
-    async def post(self, payload: dict[str, Any]) -> Any:
+    async def post(self, payload: dict[str, Any], **kwargs: Any) -> Any:
         """Sign and POST payload, decode the response as JSON."""
-        return json.loads(await self.post_raw(payload))
+        headers = kwargs.pop("headers", {})
+        headers.setdefault("content-type", "application/json")  # caller may override
+        return json.loads(await self.post_raw(json.dumps(payload).encode(), headers=headers, **kwargs))
