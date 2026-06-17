@@ -1,7 +1,22 @@
 """TrustConfig — allowlist of permitted clients parsed from TRUST_CLIENTS."""
 
+import asyncio
 import os
+import socket
 from dataclasses import dataclass
+
+
+async def _forward_dns(hostname: str) -> list[str]:
+    """Forward-resolve a hostname to its IP addresses (empty list on failure).
+
+    Exposed at module level so tests can monkeypatch it.
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        _, _, ips = await loop.run_in_executor(None, socket.gethostbyname_ex, hostname)
+        return ips
+    except socket.gaierror:
+        return []
 
 
 @dataclass
@@ -58,10 +73,12 @@ class TrustConfig:
     def __init__(self, trust_clients: str) -> None:
         """Parse TRUST_CLIENTS and build the hostname→RoleSet allowlist."""
         self._permitted: dict[str, RoleSet] = self._parse(trust_clients)
+        self._ip_cache: dict[str, set[str]] = {}
 
     def reset(self, trust_clients: str = "") -> None:
         """Reconfigure the allowlist — intended for use in tests only."""
         self._permitted = self._parse(trust_clients)
+        self._ip_cache = {}
 
     def is_hostname_permitted(self, hostname: str) -> bool:
         """Return True if the hostname appears in the allowlist."""
@@ -71,6 +88,25 @@ class TrustConfig:
         """Return True if the hostname is permitted and its RoleSet allows the role."""
         role_set = self._permitted.get(hostname, None)
         return role_set is not None and role_set.permits(role)
+
+    async def lookup_hostnames(self, ip: str) -> set[str]:
+        """Return all TRUST_CLIENTS hostnames that forward-resolve to this IP.
+
+        Uses a lazy ip→hostnames cache. On a miss, refreshes the cache by
+        forward-resolving every configured hostname and retries.
+        Returns an empty set if no allowlisted hostname maps to this IP.
+        """
+        if ip in self._ip_cache:
+            return self._ip_cache[ip]
+        await self._refresh_ip_cache()
+        return self._ip_cache.get(ip, set())
+
+    async def _refresh_ip_cache(self) -> None:
+        new_cache: dict[str, set[str]] = {}
+        for hostname in self._permitted:
+            for resolved_ip in await _forward_dns(hostname):
+                new_cache.setdefault(resolved_ip, set()).add(hostname)
+        self._ip_cache = new_cache
 
 
 _instance: TrustConfig | None = None

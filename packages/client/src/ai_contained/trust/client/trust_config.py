@@ -111,7 +111,14 @@ class TrustConfig:
 
     def get_client(self, role: str) -> TrustClient | None:
         """Return the TrustClient for a role — falls back to wildcard '*' if role not explicitly configured."""
-        return self._clients.get(role, self._clients.get("*", None))
+        if role in self._clients:
+            return self._clients[role]
+        wildcard = self._clients.get("*")
+        if wildcard is None:
+            return None
+        # Wildcard client has _path="/*/secret"; rewrite to the requested role's path so
+        # httpx doesn't URL-encode the "*" → "/%2A/secret" → 404 on the server.
+        return TrustClient(_connection=wildcard._connection, _path=f"/{role}/secret")
 
 
 _instance: TrustConfig | None = None

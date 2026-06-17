@@ -1,5 +1,7 @@
+import pytest
 from assertpy import assert_that
 
+import ai_contained.trust.server.trust_config as trust_config
 from ai_contained.trust.server.trust_config import RoleSet, TrustConfig
 
 
@@ -68,3 +70,78 @@ def describe_TrustConfig() -> None:
             assert_that(config.is_hostname_permitted("client-hostname")).is_true()
             assert_that(config.is_role_permitted("client-hostname", "shell")).is_true()
             assert_that(config.is_role_permitted("client-hostname", "aws")).is_false()
+
+    def describe_lookup_hostnames() -> None:
+        async def it_returns_the_hostname_whose_forward_dns_matches_the_ip(
+            monkeypatch: pytest.MonkeyPatch,
+        ) -> None:
+            async def _fake_forward_dns(hostname: str) -> list[str]:
+                return {"client-a": ["10.0.0.1"], "client-b": ["10.0.0.2"]}.get(hostname, [])
+
+            monkeypatch.setattr(trust_config, "_forward_dns", _fake_forward_dns)
+            config = TrustConfig("client-a,client-b")
+            assert_that(await config.lookup_hostnames("10.0.0.1")).is_equal_to({"client-a"})
+
+        async def it_returns_empty_set_when_no_hostname_resolves_to_the_ip(
+            monkeypatch: pytest.MonkeyPatch,
+        ) -> None:
+            async def _fake_forward_dns(hostname: str) -> list[str]:
+                return ["10.0.0.1"]
+
+            monkeypatch.setattr(trust_config, "_forward_dns", _fake_forward_dns)
+            config = TrustConfig("client-a")
+            assert_that(await config.lookup_hostnames("10.0.0.99")).is_empty()
+
+        async def it_returns_all_hostnames_when_multiple_resolve_to_the_same_ip(
+            monkeypatch: pytest.MonkeyPatch,
+        ) -> None:
+            # Operator deliberately aliases two names to one container — merge, don't error.
+            async def _fake_forward_dns(hostname: str) -> list[str]:
+                return ["10.0.0.1"]
+
+            monkeypatch.setattr(trust_config, "_forward_dns", _fake_forward_dns)
+            config = TrustConfig("client-a,client-b")
+            assert_that(await config.lookup_hostnames("10.0.0.1")).is_equal_to({"client-a", "client-b"})
+
+        async def it_caches_results_to_avoid_repeated_dns_lookups(
+            monkeypatch: pytest.MonkeyPatch,
+        ) -> None:
+            call_count = 0
+
+            async def _fake_forward_dns(hostname: str) -> list[str]:
+                nonlocal call_count
+                call_count += 1
+                return ["10.0.0.1"]
+
+            monkeypatch.setattr(trust_config, "_forward_dns", _fake_forward_dns)
+            config = TrustConfig("client-a")
+            await config.lookup_hostnames("10.0.0.1")
+            await config.lookup_hostnames("10.0.0.1")
+            assert_that(call_count).is_equal_to(1)
+
+        async def it_refreshes_cache_on_miss_then_returns_match(
+            monkeypatch: pytest.MonkeyPatch,
+        ) -> None:
+            # First call: hostname doesn't resolve yet (client not started).
+            # Second call: hostname now resolves — cache must refresh on the miss.
+            resolves: dict[str, list[str]] = {"client-a": []}
+
+            async def _fake_forward_dns(hostname: str) -> list[str]:
+                return resolves.get(hostname, [])
+
+            monkeypatch.setattr(trust_config, "_forward_dns", _fake_forward_dns)
+            config = TrustConfig("client-a")
+            assert_that(await config.lookup_hostnames("10.0.0.1")).is_empty()
+            resolves["client-a"] = ["10.0.0.1"]
+            assert_that(await config.lookup_hostnames("10.0.0.1")).is_equal_to({"client-a"})
+
+        async def it_clears_cache_on_reset(monkeypatch: pytest.MonkeyPatch) -> None:
+            async def _fake_forward_dns(hostname: str) -> list[str]:
+                return {"client-a": ["10.0.0.1"], "client-b": ["10.0.0.2"]}.get(hostname, [])
+
+            monkeypatch.setattr(trust_config, "_forward_dns", _fake_forward_dns)
+            config = TrustConfig("client-a")
+            await config.lookup_hostnames("10.0.0.1")  # populate cache
+            config.reset("client-b")
+            assert_that(await config.lookup_hostnames("10.0.0.1")).is_empty()
+            assert_that(await config.lookup_hostnames("10.0.0.2")).is_equal_to({"client-b"})
