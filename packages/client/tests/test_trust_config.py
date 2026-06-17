@@ -77,6 +77,13 @@ def describe_TrustConfig() -> None:
             config = trust_client.get_trust_config()
             assert_that(config.get_client("aws")._connection).is_same_as(config.get_client("shell")._connection)
 
+        async def it_uses_role_specific_path_when_falling_back_to_wildcard(http: httpx.AsyncClient) -> None:
+            # Wildcard config bakes _path="/*/secret" into the client. Falling back to it for
+            # role="aws" must produce a client whose path is "/aws/secret", not "/*/secret" —
+            # otherwise httpx URL-encodes the "*" and the server receives "/%2A/secret" → 404.
+            await trust_client.init_trust_config("http://127.0.0.1:8080", lambda url: http)
+            assert_that(trust_client.get_trust_config().get_client("aws")._path).is_equal_to("/aws/secret")
+
 
 def describe_register_clients() -> None:
     from ai_contained.trust.client.trust_config import _register_clients
