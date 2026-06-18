@@ -5,30 +5,15 @@ The server stores them keyed by client IP, enforcing one registration per IP.
 A second attempt from the same IP is rejected with HTTP 401.
 """
 
-import asyncio
 import json
-import socket
 from ipaddress import ip_address
 
 from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from ai_contained.trust.server.trust_config import get_trust_config
+from ai_contained.trust.server.trust_config import RoleSet, get_trust_config
 from ai_contained.trust.server.trust_store import RegisteredClient, get_trust_store
-
-
-async def _reverse_dns(ip: str) -> list[str]:
-    """Return all names for an IP: primary hostname, aliases, and the IP itself.
-
-    Always including the IP allows TRUST_CLIENTS to use hostnames or IP addresses interchangeably.
-    """
-    loop = asyncio.get_running_loop()
-    try:
-        hostname, aliases, _ = await loop.run_in_executor(None, socket.gethostbyaddr, ip)
-        return [hostname] + aliases + [ip]
-    except socket.herror:
-        return [ip]
 
 
 async def register(mcp: FastMCP) -> None:
@@ -44,16 +29,17 @@ async def register(mcp: FastMCP) -> None:
         if client_ip in store._clients:
             return JSONResponse({"code": "ALREADY_REGISTERED"}, status_code=401)
 
-        # Reverse DNS lookup — check all names (hostname, aliases, IP) against TrustConfig
+        # Forward-DNS lookup — find every TRUST_CLIENTS hostname whose A-record matches client_ip.
+        # Multiple matches are merged (operator deliberately aliased names to the same container).
         config = get_trust_config()
-        names = await _reverse_dns(str(client_ip))
-        matches = [n for n in names if config.is_hostname_permitted(n)]
-        if len(matches) == 0:
+        hostnames = await config.lookup_hostnames(str(client_ip))
+        if not hostnames:
             return JSONResponse({"code": "FORBIDDEN"}, status_code=401)
-        elif len(matches) > 1:
-            detail = f"{client_ip} matches multiple TRUST_CLIENTS entries: {', '.join(matches)}"
-            return JSONResponse({"code": "AMBIGUOUS_CONFIG", "detail": detail}, status_code=500)
-        permitted_name = matches[0]
+        merged_roles = RoleSet(allowed=set(), denied=set())
+        for hostname in hostnames:
+            role_set = config._permitted[hostname]
+            merged_roles.allowed |= role_set.allowed
+            merged_roles.denied |= role_set.denied
 
         if "application/json" not in request.headers.get("content-type", ""):
             return JSONResponse({"code": "INVALID_CONTENT_TYPE"}, status_code=400)
@@ -78,7 +64,7 @@ async def register(mcp: FastMCP) -> None:
             keys[field] = value
 
         store._clients[client_ip] = RegisteredClient(
-            roles=config._permitted[permitted_name],
+            roles=merged_roles,
             signing_public_key=keys["signing_public_key"],
             encryption_public_key=keys["encryption_public_key"],
         )
