@@ -1,8 +1,12 @@
+from ipaddress import ip_address
+
 import httpx
 import pytest
 from assertpy import assert_that
 
+import ai_contained.trust.server.trust_config as trust_config
 from ai_contained.trust import server as trust_server
+from ai_contained.trust.server.trust_store import get_trust_store
 
 
 def describe_POST_trust_register() -> None:
@@ -70,16 +74,19 @@ def describe_POST_trust_register() -> None:
         assert_that(response.status_code).is_equal_to(401)
         assert_that(response.json()).is_equal_to({"code": "FORBIDDEN"})
 
-    async def it_rejects_ambiguous_trust_config(http: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        import ai_contained.trust.server.trust_register as trust_register
+    async def it_merges_role_sets_when_multiple_hostnames_resolve_to_same_ip(
+        http: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Operator deliberately aliased two TRUST_CLIENTS entries to one container —
+        # both should be applied, not rejected as ambiguous.
+        async def _fake_forward_dns(hostname: str) -> list[str]:
+            return ["127.0.0.1"] if hostname in ("alias-a", "alias-b") else []
 
-        async def _fake_reverse_dns(ip: str) -> list[str]:
-            return ["hostname-a", "hostname-b"]
-
-        monkeypatch.setattr(trust_register, "_reverse_dns", _fake_reverse_dns)
-        trust_server.get_trust_config().reset("hostname-a,hostname-b")
+        monkeypatch.setattr(trust_config, "_forward_dns", _fake_forward_dns)
+        trust_server.get_trust_config().reset("aws=alias-a,shell=alias-b")
         payload = {"signing_public_key": "ab" * 32, "encryption_public_key": "cd" * 32}
         response = await http.post("/trust/register", json=payload)
-        assert_that(response.status_code).is_equal_to(500)
-        assert_that(response.json()["code"]).is_equal_to("AMBIGUOUS_CONFIG")
-        assert_that(response.json()["detail"]).contains("hostname-a").contains("hostname-b")
+        assert_that(response.status_code).is_equal_to(200)
+
+        registered = get_trust_store()._clients[ip_address("127.0.0.1")]
+        assert_that(registered.roles.allowed).is_equal_to({"aws", "shell"})
