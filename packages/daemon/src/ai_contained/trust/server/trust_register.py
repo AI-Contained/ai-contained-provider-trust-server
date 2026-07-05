@@ -12,13 +12,12 @@ from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from ai_contained.trust.server.trust_config import RoleSet, get_trust_config
-from ai_contained.trust.server.trust_store import RegisteredClient, get_trust_store
+from ai_contained.trust.server.trust_config import RoleSet, TrustConfig
+from ai_contained.trust.server.trust_store import RegisteredClient, TrustStore
 
 
-async def register(mcp: FastMCP) -> None:
+async def register(mcp: FastMCP, store: TrustStore, config: TrustConfig) -> None:
     """Register the /trust/register endpoint with the MCP server."""
-    store = get_trust_store()
 
     @mcp.custom_route("/trust/register", methods=["POST"])
     async def trust_register(request: Request) -> Response:
@@ -31,7 +30,6 @@ async def register(mcp: FastMCP) -> None:
 
         # Forward-DNS lookup — find every TRUST_CLIENTS hostname whose A-record matches client_ip.
         # Multiple matches are merged (operator deliberately aliased names to the same container).
-        config = get_trust_config()
         hostnames = await config.lookup_hostnames(str(client_ip))
         if not hostnames:
             return JSONResponse({"code": "FORBIDDEN"}, status_code=401)

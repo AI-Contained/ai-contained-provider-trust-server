@@ -4,13 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-contained-provider-trust-server-client"
-version = "1.0.6"
+version = "1.1.0"
 description = "TrustConnection low-level crypto HTTP client for ai-contained"
 requires-python = ">=3.12"
 dependencies = [
     "pynacl>=1.5",
     "httpx>=0.28.1",
-    "ai-contained-core-mcp @ https://github.com/AI-Contained/ai-contained-base/archive/refs/tags/v0.3.1.zip#subdirectory=packages/core-mcp",
+    # TODO: replace with "ai-contained-core-mcp>=0.4" once base v0.4.0 is tagged
+    "ai-contained-core-mcp @ https://github.com/AI-Contained/ai-contained-base/archive/refs/heads/branch-kill-singletons.zip#subdirectory=packages/core-mcp",
 ]
 
 [project.optional-dependencies]

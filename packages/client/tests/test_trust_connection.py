@@ -1,15 +1,17 @@
 import time
+from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
 from assertpy import assert_that
-from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import Response
 
 import ai_contained.trust.client.trust_connection as trust_connection
-from ai_contained.trust import server as trust_server
+from ai_contained.core.mcp.stack import Stack
 from ai_contained.trust.client.trust_connection import TrustConnection
+from ai_contained.trust.server import TrustServer
+from ai_contained.trust.testing import loopback_http
 
 
 async def _raise_not_implemented(request: Request) -> Response:
@@ -21,15 +23,13 @@ class SecretEndpointHandler:
 
 
 @pytest.fixture
-async def mcp() -> FastMCP:
-    server = FastMCP("test")
-    await trust_server.register(server)
-
-    @trust_server.secret_route(server, role="test")
+async def http(stack: Stack, trust: TrustServer) -> AsyncGenerator[httpx.AsyncClient, None]:
+    @trust.secret_route(role="test")
     async def secret_endpoint(request: Request) -> Response:
         return await SecretEndpointHandler.handle(request)
 
-    return server
+    async with loopback_http(stack) as client:
+        yield client
 
 
 def describe_TrustConnection() -> None:

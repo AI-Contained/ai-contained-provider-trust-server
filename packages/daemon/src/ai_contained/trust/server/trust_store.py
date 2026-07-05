@@ -32,26 +32,9 @@ class TrustStore:
     """In-memory registry of clients that have completed key exchange.
 
     Keyed by client IP address — enforces one registration per IP.
-    Call reset() between tests to clear state.
+    One instance per TrustServer; tests construct fresh ones.
     """
 
     def __init__(self) -> None:
         """Initialize an empty client registry."""
         self._clients: dict[IPAddress, RegisteredClient] = {}
-
-    def reset(self) -> None:
-        """Clear all registered clients — intended for use in tests only."""
-        self._clients.clear()
-
-
-# Module-level singleton — one TrustStore per process in production.
-# Tests bypass this by passing TrustStore() directly to register().
-_instance: TrustStore | None = None
-
-
-def get_trust_store() -> TrustStore:
-    """Return the process-wide TrustStore singleton."""
-    global _instance
-    if _instance is None:
-        _instance = TrustStore()
-    return _instance

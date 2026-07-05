@@ -15,7 +15,7 @@ from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from ai_contained.trust.server.trust_store import get_trust_store
+from ai_contained.trust.server.trust_store import TrustStore
 
 SecretCallback = Callable[[Request], Awaitable[Response]]
 SecretDictCallback = Callable[[Request, dict[str, Any]], Awaitable[Response]]
@@ -28,6 +28,7 @@ _AUTH_RE = re.compile(r'^Signature keyId="Ed25519",created_ts="(\d+)",signature=
 
 def secret_route(
     mcp: FastMCP,
+    store: TrustStore,
     role: str,
     path: str | None = None,
     clock_skew_seconds: int = 30,
@@ -39,7 +40,6 @@ def secret_route(
 
         @mcp.custom_route(resolved_path, methods=["POST"])
         async def handler(request: Request) -> Response:
-            store = get_trust_store()
             # 1. Look up client by IP — 401 if unregistered
             if request.client is None:
                 return JSONResponse({"code": "UNREGISTERED"}, status_code=401)
