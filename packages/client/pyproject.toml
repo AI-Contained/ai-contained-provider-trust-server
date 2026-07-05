@@ -11,7 +11,7 @@ dependencies = [
     "pynacl>=1.5",
     "httpx>=0.28.1",
     # TODO: replace with "ai-contained-core-mcp>=0.4" once base v0.4.0 is tagged
-    "ai-contained-core-mcp @ https://github.com/AI-Contained/ai-contained-base/archive/refs/heads/branch-kill-singletons.zip#subdirectory=packages/core-mcp",
+    "ai-contained-core-mcp @ https://github.com/AI-Contained/ai-contained-base/archive/refs/heads/kill-singletons.zip#subdirectory=packages/core-mcp",
 ]
 
 [project.optional-dependencies]
