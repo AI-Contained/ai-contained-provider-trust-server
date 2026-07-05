@@ -7,12 +7,11 @@ from assertpy import assert_that
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from ai_contained.core.mcp.stack import Stack
+from ai_contained.core.mcp.harness import Harness
 from ai_contained.trust import server as trust_server
 from ai_contained.trust.client import TrustClient
 from ai_contained.trust.client.trust_connection import TrustConnection
 from ai_contained.trust.server import TrustServer
-from ai_contained.trust.testing import loopback_http
 
 
 async def _raise_not_implemented(request: Request) -> Response:
@@ -24,12 +23,12 @@ class SecretEndpointHandler:
 
 
 @pytest.fixture
-async def http(stack: Stack, trust: TrustServer) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def http(harness: Harness, trust: TrustServer) -> AsyncGenerator[httpx.AsyncClient, None]:
     @trust.secret_route(role="test")
     async def secret_endpoint(request: Request) -> Response:
         return await SecretEndpointHandler.handle(request)
 
-    async with loopback_http(stack) as client:
+    async with harness.raw_client() as client:
         yield client
 
 
@@ -156,7 +155,7 @@ def describe_TrustClient() -> None:
 
         @pytest.fixture
         async def dict_client() -> AsyncGenerator[TrustClient, None]:
-            async with Stack(env={"TRUST_CLIENTS": "127.0.0.1"}) as s:
+            async with Harness(env={"TRUST_CLIENTS": "127.0.0.1"}) as s:
                 trust = await s.install(trust_server.provide)
                 assert isinstance(trust, TrustServer)
 
@@ -164,7 +163,7 @@ def describe_TrustClient() -> None:
                 async def dict_endpoint(request: Request, payload: dict) -> Response:
                     return await DictPayloadHandler.handle(request, payload)
 
-                async with loopback_http(s) as http:
+                async with s.raw_client() as http:
                     conn = TrustConnection(http)
                     await conn.register()
                     yield TrustClient(_connection=conn, _path="/dict-test/secret")
@@ -219,7 +218,7 @@ def describe_TrustClient() -> None:
     def describe_role_enforcement() -> None:
         async def it_can_register_at_custom_path() -> None:
             expected = {"ok": True}
-            async with Stack(env={"TRUST_CLIENTS": "shell=127.0.0.1"}) as s:
+            async with Harness(env={"TRUST_CLIENTS": "shell=127.0.0.1"}) as s:
                 trust = await s.install(trust_server.provide)
                 assert isinstance(trust, TrustServer)
 
@@ -231,7 +230,7 @@ def describe_TrustClient() -> None:
                 async def shell_endpoint(request: Request) -> Response:
                     return JSONResponse(expected)
 
-                async with loopback_http(s) as http:
+                async with s.raw_client() as http:
                     conn = TrustConnection(http)
                     await conn.register()
                     client = TrustClient(_connection=conn, _path="/custom/path")
@@ -252,7 +251,7 @@ def describe_TrustClient() -> None:
                 return JSONResponse(expected)
 
             monkeypatch.setattr(SecretEndpointHandler, "handle", _handler)
-            async with Stack(env={"TRUST_CLIENTS": "test=127.0.0.1"}) as s:
+            async with Harness(env={"TRUST_CLIENTS": "test=127.0.0.1"}) as s:
                 trust = await s.install(trust_server.provide)
                 assert isinstance(trust, TrustServer)
 
@@ -260,14 +259,14 @@ def describe_TrustClient() -> None:
                 async def secret_endpoint(request: Request) -> Response:
                     return await SecretEndpointHandler.handle(request)
 
-                async with loopback_http(s) as http:
+                async with s.raw_client() as http:
                     conn = TrustConnection(http)
                     await conn.register()
                     client = TrustClient(_connection=conn, _path="/test/secret")
                     assert_that(await client.post({})).is_equal_to(expected)
 
         async def it_returns_403_when_role_is_not_permitted() -> None:
-            async with Stack(env={"TRUST_CLIENTS": "aws=127.0.0.1"}) as s:  # only aws role — test not permitted
+            async with Harness(env={"TRUST_CLIENTS": "aws=127.0.0.1"}) as s:  # only aws role — test not permitted
                 trust = await s.install(trust_server.provide)
                 assert isinstance(trust, TrustServer)
 
@@ -275,7 +274,7 @@ def describe_TrustClient() -> None:
                 async def secret_endpoint(request: Request) -> Response:
                     return await SecretEndpointHandler.handle(request)
 
-                async with loopback_http(s) as http:
+                async with s.raw_client() as http:
                     conn = TrustConnection(http)
                     await conn.register()
                     client = TrustClient(_connection=conn, _path="/test/secret")

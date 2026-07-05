@@ -5,10 +5,9 @@ import pytest
 from assertpy import assert_that
 
 import ai_contained.trust.server.trust_config as trust_config
-from ai_contained.core.mcp.stack import Stack
+from ai_contained.core.mcp.harness import Harness
 from ai_contained.trust import server as trust_server
 from ai_contained.trust.server import TrustServer
-from ai_contained.trust.testing import loopback_http
 
 
 def describe_POST_trust_register() -> None:
@@ -70,10 +69,10 @@ def describe_POST_trust_register() -> None:
         assert_that(second.json()).is_equal_to({"code": "ALREADY_REGISTERED"})
 
     async def it_rejects_client_not_in_trust_config() -> None:
-        # Own stack: an allowlist that does not include the loopback peer.
-        async with Stack(env={"TRUST_CLIENTS": "172.172.172.172"}) as s:
+        # Own harness: an allowlist that does not include the fake peer.
+        async with Harness(env={"TRUST_CLIENTS": "172.172.172.172"}) as s:
             await s.install(trust_server.provide)
-            async with loopback_http(s) as http:
+            async with s.raw_client() as http:
                 payload = {"signing_public_key": "ab" * 32, "encryption_public_key": "cd" * 32}
                 response = await http.post("/trust/register", json=payload)
         assert_that(response.status_code).is_equal_to(401)
@@ -88,10 +87,10 @@ def describe_POST_trust_register() -> None:
             return ["127.0.0.1"] if hostname in ("alias-a", "alias-b") else []
 
         monkeypatch.setattr(trust_config, "_forward_dns", _fake_forward_dns)
-        async with Stack(env={"TRUST_CLIENTS": "aws=alias-a,shell=alias-b"}) as s:
+        async with Harness(env={"TRUST_CLIENTS": "aws=alias-a,shell=alias-b"}) as s:
             trust = await s.install(trust_server.provide)
             assert isinstance(trust, TrustServer)
-            async with loopback_http(s) as http:
+            async with s.raw_client() as http:
                 payload = {"signing_public_key": "ab" * 32, "encryption_public_key": "cd" * 32}
                 response = await http.post("/trust/register", json=payload)
         assert_that(response.status_code).is_equal_to(200)

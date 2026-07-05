@@ -8,10 +8,9 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 import ai_contained.trust.client.trust_connection as trust_connection
-from ai_contained.core.mcp.stack import Stack
+from ai_contained.core.mcp.harness import Harness
 from ai_contained.trust.client.trust_connection import TrustConnection
 from ai_contained.trust.server import TrustServer
-from ai_contained.trust.testing import loopback_http
 
 
 async def _raise_not_implemented(request: Request) -> Response:
@@ -23,12 +22,12 @@ class SecretEndpointHandler:
 
 
 @pytest.fixture
-async def http(stack: Stack, trust: TrustServer) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def http(harness: Harness, trust: TrustServer) -> AsyncGenerator[httpx.AsyncClient, None]:
     @trust.secret_route(role="test")
     async def secret_endpoint(request: Request) -> Response:
         return await SecretEndpointHandler.handle(request)
 
-    async with loopback_http(stack) as client:
+    async with harness.raw_client() as client:
         yield client
 
 
