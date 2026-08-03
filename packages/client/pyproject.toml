@@ -14,9 +14,9 @@ dependencies = [
 ]
 
 # Fallback source — only consulted when nothing else already satisfies the name in
-# the current resolve. TODO: move to a tag once base is released.
+# the current resolve (e.g. a sibling /opt/ directory in a monolithic image build).
 [tool.uv.sources]
-ai-contained-core-mcp = { url = "https://github.com/AI-Contained/ai-contained-base/archive/refs/heads/kill-singletons.zip", subdirectory = "packages/core-mcp" }
+ai-contained-core-mcp = { url = "https://github.com/AI-Contained/ai-contained-base/archive/refs/tags/v0.4.0.zip", subdirectory = "packages/core-mcp" }
 
 [project.optional-dependencies]
 dev = [
