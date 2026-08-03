@@ -3,13 +3,7 @@ import pytest
 from assertpy import assert_that
 
 from ai_contained.trust import client as trust_client
-from ai_contained.trust.client.trust_config import reset_trust_config
 from ai_contained.trust.client.trust_connection import TrustConnection
-
-
-@pytest.fixture(autouse=True)
-def _reset_trust_config() -> None:
-    reset_trust_config()
 
 
 def describe_TrustConfig() -> None:
@@ -51,38 +45,34 @@ def describe_TrustConfig() -> None:
                 "http://foo.com:8080,http://foo.com:8081"
             )
 
-    def describe_get_client() -> None:
-        def it_is_uninitialized_by_default() -> None:
-            assert_that(trust_client.get_trust_config()).is_none()
-
+    def describe_create() -> None:
         async def it_allows_known_role_and_denies_unknown(http: httpx.AsyncClient) -> None:
-            await trust_client.init_trust_config("aws=http://127.0.0.1:8080", lambda url: http)
-            assert_that(trust_client.get_trust_config().get_client("github")).is_none()
-            assert_that(trust_client.get_trust_config().get_client("aws")).is_instance_of(trust_client.TrustClient)
+            config = await trust_client.TrustConfig.create("aws=http://127.0.0.1:8080", lambda url: http)
+            assert_that(config.get_client("github")).is_none()
+            assert_that(config.get_client("aws")).is_instance_of(trust_client.TrustClient)
 
         async def it_allows_any_role_via_wildcard(http: httpx.AsyncClient) -> None:
-            await trust_client.init_trust_config("http://127.0.0.1:8080", lambda url: http)
-            assert_that(trust_client.get_trust_config().get_client("github")).is_instance_of(trust_client.TrustClient)
-            assert_that(trust_client.get_trust_config().get_client("aws")).is_instance_of(trust_client.TrustClient)
+            config = await trust_client.TrustConfig.create("http://127.0.0.1:8080", lambda url: http)
+            assert_that(config.get_client("github")).is_instance_of(trust_client.TrustClient)
+            assert_that(config.get_client("aws")).is_instance_of(trust_client.TrustClient)
 
         async def it_denies_role_even_with_wildcard(http: httpx.AsyncClient) -> None:
-            await trust_client.init_trust_config("http://127.0.0.1:8080,aws=", lambda url: http)
-            assert_that(trust_client.get_trust_config().get_client("github")).is_instance_of(trust_client.TrustClient)
-            assert_that(trust_client.get_trust_config().get_client("aws")).is_none()
+            config = await trust_client.TrustConfig.create("http://127.0.0.1:8080,aws=", lambda url: http)
+            assert_that(config.get_client("github")).is_instance_of(trust_client.TrustClient)
+            assert_that(config.get_client("aws")).is_none()
 
         async def it_shares_connection_across_roles_on_same_host(http: httpx.AsyncClient) -> None:
-            await trust_client.init_trust_config(
+            config = await trust_client.TrustConfig.create(
                 "aws=http://127.0.0.1:8080,shell=http://127.0.0.1:8080", lambda url: http
             )
-            config = trust_client.get_trust_config()
             assert_that(config.get_client("aws")._connection).is_same_as(config.get_client("shell")._connection)
 
         async def it_uses_role_specific_path_when_falling_back_to_wildcard(http: httpx.AsyncClient) -> None:
             # Wildcard config bakes _path="/*/secret" into the client. Falling back to it for
             # role="aws" must produce a client whose path is "/aws/secret", not "/*/secret" —
             # otherwise httpx URL-encodes the "*" and the server receives "/%2A/secret" → 404.
-            await trust_client.init_trust_config("http://127.0.0.1:8080", lambda url: http)
-            assert_that(trust_client.get_trust_config().get_client("aws")._path).is_equal_to("/aws/secret")
+            config = await trust_client.TrustConfig.create("http://127.0.0.1:8080", lambda url: http)
+            assert_that(config.get_client("aws")._path).is_equal_to("/aws/secret")
 
 
 def describe_register_clients() -> None:

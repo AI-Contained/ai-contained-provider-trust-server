@@ -134,14 +134,3 @@ def describe_TrustConfig() -> None:
             assert_that(await config.lookup_hostnames("10.0.0.1")).is_empty()
             resolves["client-a"] = ["10.0.0.1"]
             assert_that(await config.lookup_hostnames("10.0.0.1")).is_equal_to({"client-a"})
-
-        async def it_clears_cache_on_reset(monkeypatch: pytest.MonkeyPatch) -> None:
-            async def _fake_forward_dns(hostname: str) -> list[str]:
-                return {"client-a": ["10.0.0.1"], "client-b": ["10.0.0.2"]}.get(hostname, [])
-
-            monkeypatch.setattr(trust_config, "_forward_dns", _fake_forward_dns)
-            config = TrustConfig("client-a")
-            await config.lookup_hostnames("10.0.0.1")  # populate cache
-            config.reset("client-b")
-            assert_that(await config.lookup_hostnames("10.0.0.1")).is_empty()
-            assert_that(await config.lookup_hostnames("10.0.0.2")).is_equal_to({"client-b"})

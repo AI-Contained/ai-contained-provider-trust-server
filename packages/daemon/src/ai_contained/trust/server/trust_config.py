@@ -1,7 +1,6 @@
 """TrustConfig — allowlist of permitted clients parsed from TRUST_CLIENTS."""
 
 import asyncio
-import os
 import socket
 from dataclasses import dataclass
 
@@ -75,11 +74,6 @@ class TrustConfig:
         self._permitted: dict[str, RoleSet] = self._parse(trust_clients)
         self._ip_cache: dict[str, set[str]] = {}
 
-    def reset(self, trust_clients: str = "") -> None:
-        """Reconfigure the allowlist — intended for use in tests only."""
-        self._permitted = self._parse(trust_clients)
-        self._ip_cache = {}
-
     def is_hostname_permitted(self, hostname: str) -> bool:
         """Return True if the hostname appears in the allowlist."""
         return hostname in self._permitted
@@ -107,14 +101,3 @@ class TrustConfig:
             for resolved_ip in await _forward_dns(hostname):
                 new_cache.setdefault(resolved_ip, set()).add(hostname)
         self._ip_cache = new_cache
-
-
-_instance: TrustConfig | None = None
-
-
-def get_trust_config() -> TrustConfig:
-    """Return the process-wide TrustConfig singleton."""
-    global _instance
-    if _instance is None:
-        _instance = TrustConfig(os.environ.get("TRUST_CLIENTS", ""))
-    return _instance

@@ -4,14 +4,19 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-contained-provider-trust-server-daemon"
-version = "1.0.6"
+version = "1.1.0"
 description = "TrustServer base class for ai-contained secret brokers"
 requires-python = ">=3.12"
 dependencies = [
     "pynacl>=1.5",
-    "ai-contained-core-mcp @ https://github.com/AI-Contained/ai-contained-base/archive/refs/tags/v0.3.1.zip#subdirectory=packages/core-mcp",
+    "ai-contained-core-mcp>=0.4.0",
     "starlette>=1.0.1",
 ]
+
+# Fallback source — only consulted when nothing else already satisfies the name in
+# the current resolve (e.g. a sibling /opt/ directory in a monolithic image build).
+[tool.uv.sources]
+ai-contained-core-mcp = { url = "https://github.com/AI-Contained/ai-contained-base/archive/refs/tags/v0.4.0.zip", subdirectory = "packages/core-mcp" }
 
 [project.optional-dependencies]
 dev = [
@@ -52,7 +57,7 @@ explicit_package_bases = true
 strict = true
 
 [project.entry-points."ai_contained.provider"]
-trust_server = "ai_contained.trust.server:register"
+trust_server = "ai_contained.trust.server:provide"
 
 [tool.hatch.metadata]
 allow-direct-references = true

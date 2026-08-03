@@ -1,15 +1,17 @@
 import json
+from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
 from assertpy import assert_that
-from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from ai_contained.core.mcp.harness import Harness
 from ai_contained.trust import server as trust_server
 from ai_contained.trust.client import TrustClient
 from ai_contained.trust.client.trust_connection import TrustConnection
+from ai_contained.trust.server import TrustServer
 
 
 async def _raise_not_implemented(request: Request) -> Response:
@@ -21,15 +23,13 @@ class SecretEndpointHandler:
 
 
 @pytest.fixture
-async def mcp() -> FastMCP:
-    server = FastMCP("test")
-    await trust_server.register(server)
-
-    @trust_server.secret_route(server, role="test")
+async def http(harness: Harness, trust: TrustServer) -> AsyncGenerator[httpx.AsyncClient, None]:
+    @trust.secret_route(role="test")
     async def secret_endpoint(request: Request) -> Response:
         return await SecretEndpointHandler.handle(request)
 
-    return server
+    async with harness.raw_client() as client:
+        yield client
 
 
 def describe_TrustClient() -> None:
@@ -154,19 +154,19 @@ def describe_TrustClient() -> None:
             handle = _default_dict_handler
 
         @pytest.fixture
-        async def dict_client() -> TrustClient:
-            server = FastMCP("test")
-            await trust_server.register(server)
+        async def dict_client() -> AsyncGenerator[TrustClient, None]:
+            async with Harness(env={"TRUST_CLIENTS": "127.0.0.1"}) as s:
+                trust = await s.install(trust_server.provide)
+                assert isinstance(trust, TrustServer)
 
-            @trust_server.secret_route(server, role="dict-test")
-            async def dict_endpoint(request: Request, payload: dict) -> Response:
-                return await DictPayloadHandler.handle(request, payload)
+                @trust.secret_route(role="dict-test")
+                async def dict_endpoint(request: Request, payload: dict) -> Response:
+                    return await DictPayloadHandler.handle(request, payload)
 
-            transport = httpx.ASGITransport(app=server.http_app(), client=("127.0.0.1", 50000))
-            async with httpx.AsyncClient(transport=transport, base_url="http://ignored") as http:
-                conn = TrustConnection(http)
-                await conn.register()
-                yield TrustClient(_connection=conn, _path="/dict-test/secret")
+                async with s.raw_client() as http:
+                    conn = TrustConnection(http)
+                    await conn.register()
+                    yield TrustClient(_connection=conn, _path="/dict-test/secret")
 
         async def it_passes_decoded_payload_to_handler(
             dict_client: TrustClient, monkeypatch: pytest.MonkeyPatch
@@ -216,53 +216,72 @@ def describe_TrustClient() -> None:
             )
 
     def describe_role_enforcement() -> None:
-        async def it_can_register_at_custom_path(mcp: FastMCP) -> None:
+        async def it_can_register_at_custom_path() -> None:
             expected = {"ok": True}
-            trust_server.get_trust_config().reset("shell=127.0.0.1")
+            async with Harness(env={"TRUST_CLIENTS": "shell=127.0.0.1"}) as s:
+                trust = await s.install(trust_server.provide)
+                assert isinstance(trust, TrustServer)
 
-            @trust_server.secret_route(mcp, role="shell", path="/custom/path")
-            async def shell_endpoint(request: Request) -> Response:
-                return JSONResponse(expected)
+                @trust.secret_route(role="test")
+                async def secret_endpoint(request: Request) -> Response:
+                    return await SecretEndpointHandler.handle(request)
 
-            transport = httpx.ASGITransport(app=mcp.http_app(), client=("127.0.0.1", 50000))
-            async with httpx.AsyncClient(transport=transport, base_url="http://ignored") as http:
-                conn = TrustConnection(http)
-                await conn.register()
-                client = TrustClient(_connection=conn, _path="/custom/path")
+                @trust.secret_route(role="shell", path="/custom/path")
+                async def shell_endpoint(request: Request) -> Response:
+                    return JSONResponse(expected)
 
-                # "shell" role cannot access the "test" route
-                test_client = TrustClient(_connection=conn, _path="/test/secret")
-                with pytest.raises(httpx.HTTPStatusError) as exc_info:
-                    await test_client.post({})
-                assert_that(exc_info.value.response.status_code).is_equal_to(403)
+                async with s.raw_client() as http:
+                    conn = TrustConnection(http)
+                    await conn.register()
+                    client = TrustClient(_connection=conn, _path="/custom/path")
 
-                # custom path with matching role succeeds
-                assert_that(await client.post({})).is_equal_to(expected)
+                    # "shell" role cannot access the "test" route
+                    test_client = TrustClient(_connection=conn, _path="/test/secret")
+                    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                        await test_client.post({})
+                    assert_that(exc_info.value.response.status_code).is_equal_to(403)
 
-        async def it_allows_request_when_role_is_permitted(
-            http: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
-        ) -> None:
+                    # custom path with matching role succeeds
+                    assert_that(await client.post({})).is_equal_to(expected)
+
+        async def it_allows_request_when_role_is_permitted(monkeypatch: pytest.MonkeyPatch) -> None:
             expected = {"ok": True}
-            trust_server.get_trust_config().reset("test=127.0.0.1")
 
             async def _handler(request: Request) -> Response:
                 return JSONResponse(expected)
 
             monkeypatch.setattr(SecretEndpointHandler, "handle", _handler)
-            conn = TrustConnection(http)
-            await conn.register()
-            client = TrustClient(_connection=conn, _path="/test/secret")
-            assert_that(await client.post({})).is_equal_to(expected)
+            async with Harness(env={"TRUST_CLIENTS": "test=127.0.0.1"}) as s:
+                trust = await s.install(trust_server.provide)
+                assert isinstance(trust, TrustServer)
 
-        async def it_returns_403_when_role_is_not_permitted(http: httpx.AsyncClient) -> None:
-            trust_server.get_trust_config().reset("aws=127.0.0.1")  # only aws role — test not permitted
-            conn = TrustConnection(http)
-            await conn.register()
-            client = TrustClient(_connection=conn, _path="/test/secret")
-            with pytest.raises(httpx.HTTPStatusError) as exc_info:
-                await client.post({})
-            assert_that(exc_info.value.response.status_code).is_equal_to(403)
-            assert_that(exc_info.value.response.json()).is_equal_to({"code": "FORBIDDEN"})
+                @trust.secret_route(role="test")
+                async def secret_endpoint(request: Request) -> Response:
+                    return await SecretEndpointHandler.handle(request)
+
+                async with s.raw_client() as http:
+                    conn = TrustConnection(http)
+                    await conn.register()
+                    client = TrustClient(_connection=conn, _path="/test/secret")
+                    assert_that(await client.post({})).is_equal_to(expected)
+
+        async def it_returns_403_when_role_is_not_permitted() -> None:
+            async with Harness(env={"TRUST_CLIENTS": "aws=127.0.0.1"}) as s:  # only aws role — test not permitted
+                trust = await s.install(trust_server.provide)
+                assert isinstance(trust, TrustServer)
+
+                @trust.secret_route(role="test")
+                async def secret_endpoint(request: Request) -> Response:
+                    return await SecretEndpointHandler.handle(request)
+
+                async with s.raw_client() as http:
+                    conn = TrustConnection(http)
+                    await conn.register()
+                    client = TrustClient(_connection=conn, _path="/test/secret")
+                    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                        await client.post({})
+                    assert_that(exc_info.value.response.status_code).is_equal_to(403)
+                    assert_that(exc_info.value.response.json()).is_equal_to({"code": "FORBIDDEN"})
 
         def it_shares_connection_instance_across_roles(http: httpx.AsyncClient) -> None:
             conn = TrustConnection(http)

@@ -1,4 +1,4 @@
-"""TrustConfig — builds and holds TrustClient instances parsed from TRUST_SERVERS."""
+"""TrustConfig — role→TrustClient registry, built from TRUST_SERVERS via TrustConfig.create()."""
 
 import asyncio
 import logging
@@ -105,8 +105,18 @@ class TrustConfig:
             result[role] = url
         return result
 
+    @classmethod
+    async def create(cls, raw: str, factory: HttpClientFactory = _default_http_client_factory) -> "TrustConfig":
+        """Parse TRUST_SERVERS, register with every trust server, and return the ready TrustConfig.
+
+        The only supported way to build one — this blocks (with retry/backoff)
+        until every configured server has accepted our keys, and raises
+        httpx.ConnectError if one never does.
+        """
+        return cls(await _register_clients(cls._parse(raw), factory))
+
     def __init__(self, clients: dict[str, TrustClient | None]) -> None:
-        """Store a pre-built role→TrustClient mapping (constructed by init_trust_config)."""
+        """Store a pre-built role→TrustClient mapping — internal, use ``await TrustConfig.create(...)``."""
         self._clients = clients
 
     def get_client(self, role: str) -> TrustClient | None:
@@ -119,25 +129,3 @@ class TrustConfig:
         # Wildcard client has _path="/*/secret"; rewrite to the requested role's path so
         # httpx doesn't URL-encode the "*" → "/%2A/secret" → 404 on the server.
         return TrustClient(_connection=wildcard._connection, _path=f"/{role}/secret")
-
-
-_instance: TrustConfig | None = None
-
-
-def get_trust_config() -> TrustConfig | None:
-    """Return the process-wide TrustConfig singleton, or None if not yet initialized."""
-    return _instance
-
-
-async def init_trust_config(raw: str, factory: HttpClientFactory = _default_http_client_factory) -> TrustConfig:
-    """Initialize (or reinitialize) the process-wide TrustConfig singleton."""
-    global _instance
-    _instance = None
-    _instance = TrustConfig(await _register_clients(TrustConfig._parse(raw), factory))
-    return _instance
-
-
-def reset_trust_config() -> None:
-    """Reset the singleton to None. Not part of the public API — intended for test teardown."""
-    global _instance
-    _instance = None

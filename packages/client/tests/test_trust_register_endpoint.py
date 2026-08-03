@@ -5,8 +5,9 @@ import pytest
 from assertpy import assert_that
 
 import ai_contained.trust.server.trust_config as trust_config
+from ai_contained.core.mcp.harness import Harness
 from ai_contained.trust import server as trust_server
-from ai_contained.trust.server.trust_store import get_trust_store
+from ai_contained.trust.server import TrustServer
 
 
 def describe_POST_trust_register() -> None:
@@ -67,15 +68,18 @@ def describe_POST_trust_register() -> None:
         assert_that(second.status_code).is_equal_to(401)
         assert_that(second.json()).is_equal_to({"code": "ALREADY_REGISTERED"})
 
-    async def it_rejects_client_not_in_trust_config(http: httpx.AsyncClient) -> None:
-        trust_server.get_trust_config().reset("172.172.172.172")  # override autouse — 127.0.0.1 not permitted
-        payload = {"signing_public_key": "ab" * 32, "encryption_public_key": "cd" * 32}
-        response = await http.post("/trust/register", json=payload)
+    async def it_rejects_client_not_in_trust_config() -> None:
+        # Own harness: an allowlist that does not include the fake peer.
+        async with Harness(env={"TRUST_CLIENTS": "172.172.172.172"}) as s:
+            await s.install(trust_server.provide)
+            async with s.raw_client() as http:
+                payload = {"signing_public_key": "ab" * 32, "encryption_public_key": "cd" * 32}
+                response = await http.post("/trust/register", json=payload)
         assert_that(response.status_code).is_equal_to(401)
         assert_that(response.json()).is_equal_to({"code": "FORBIDDEN"})
 
     async def it_merges_role_sets_when_multiple_hostnames_resolve_to_same_ip(
-        http: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Operator deliberately aliased two TRUST_CLIENTS entries to one container —
         # both should be applied, not rejected as ambiguous.
@@ -83,10 +87,13 @@ def describe_POST_trust_register() -> None:
             return ["127.0.0.1"] if hostname in ("alias-a", "alias-b") else []
 
         monkeypatch.setattr(trust_config, "_forward_dns", _fake_forward_dns)
-        trust_server.get_trust_config().reset("aws=alias-a,shell=alias-b")
-        payload = {"signing_public_key": "ab" * 32, "encryption_public_key": "cd" * 32}
-        response = await http.post("/trust/register", json=payload)
+        async with Harness(env={"TRUST_CLIENTS": "aws=alias-a,shell=alias-b"}) as s:
+            trust = await s.install(trust_server.provide)
+            assert isinstance(trust, TrustServer)
+            async with s.raw_client() as http:
+                payload = {"signing_public_key": "ab" * 32, "encryption_public_key": "cd" * 32}
+                response = await http.post("/trust/register", json=payload)
         assert_that(response.status_code).is_equal_to(200)
 
-        registered = get_trust_store()._clients[ip_address("127.0.0.1")]
+        registered = trust._store._clients[ip_address("127.0.0.1")]
         assert_that(registered.roles.allowed).is_equal_to({"aws", "shell"})
